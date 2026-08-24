@@ -1,0 +1,23 @@
+------------------------------------------------------How to use Cupid player 101-------------------------------------------------------------
+1-Setup:
+1.1 - install nodejs (open the setup file node-v24.15.0-x64 and install it)
+1.2 - Open the file named Cupid player.
+paste the YT playlist link inside.
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+# For local songs:
+ Put your audio files in the folder named (audio) and choose local from the settings.
+ The player scans the folder (no intervention needed).
+ PS: you will need to restart the app every time you add new songs to the folder.
+ it scans on launch only.
+ Note: Don't close the cmd while the player is open.
+-----------------------------------------------------------------------------------------------------------------------------------------------
+# Changelog
+## v1.1.0 — 2026-05-24
+
+### Added
+- Edited Tracklist button.
+- Auto-scan audio folder.
+- Improved UX.
+
+****In case of any errors consult an expert for help****
