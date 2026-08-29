@@ -312,11 +312,17 @@ export default function App() {
     }
     setLoadingPlaylist(true);
     try {
-      const tracks = await fetchYouTubePlaylist(rawInput);
-      if (tracks.length === 0) {
+      const rawTracks = await fetchYouTubePlaylist(rawInput);
+      if (rawTracks.length === 0) {
         setSettingsError('Playlist is empty or private');
         return;
       }
+      // The companion server only returns { videoId, title, artist, duration } —
+      // no art field — so derive the thumbnail client-side when it's missing.
+      const tracks = rawTracks.map((t) => ({
+        ...t,
+        art: t.art || (t.videoId ? `https://i.ytimg.com/vi/${t.videoId}/mqdefault.jpg` : null),
+      }));
       setStreamTracks(tracks);
       setSource('streaming');
       setYoutubeUrlInput('');

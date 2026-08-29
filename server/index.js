@@ -35,13 +35,14 @@ app.post('/api/youtube/playlist', async (req, res) => {
     ], { timeout: 30000, maxBuffer: 50 * 1024 * 1024 });
 
     const data = JSON.parse(stdout);
-    const entries = (data.entries || [])
+   const entries = (data.entries || [])
       .filter((e) => e && e.id && YT_ID_RE.test(e.id))
       .map((e) => ({
         videoId: e.id,
         title: e.title || e.id,
         artist: e.uploader || e.channel || 'Unknown Artist',
         duration: typeof e.duration === 'number' ? e.duration : null,
+        art: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg` // <--- ADD THIS LINE
       }));
 
     res.json({ tracks: entries });
