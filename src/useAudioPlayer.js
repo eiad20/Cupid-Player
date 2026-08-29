@@ -1,19 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-/**
- * Local audio player hook (HTML5 Audio).
- *
- * Tracks come from the user's editable playlist (audio/playlist.json),
- * loaded in App via window.cupid.getLocalPlaylist(). Files are resolved
- * to file:// URLs through getAudioPath so spaces/Unicode work correctly.
- */
 export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath) {
   const audioRef = useRef(new Audio());
   const playModeRef = useRef(playMode);
   playModeRef.current = playMode;
   const [trackIndex, setTrackIndex] = useState(0);
 
-  // Reset index when the playlist array changes (mirrors useSpotifyPlayer)
   const prevTracksRef = useRef(tracks);
   if (prevTracksRef.current !== tracks) {
     prevTracksRef.current = tracks;
@@ -36,22 +28,34 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
   const audio = audioRef.current;
   audio.volume = muted ? 0 : volume;
 
-  // Load track when index or tracks change
   useEffect(() => {
     const t = tracks[trackIndex];
     if (!t || !t.file) return;
 
     let cancelled = false;
-    audio.pause();          // ← stop whatever is currently playing
-    audio.src = '';         // ← abort the in-flight load immediately
+    audio.pause();
+    audio.src = '';
+
     (async () => {
-      let src;
-      if (getAudioPath) {
+      let src = t.file;
+      
+      // If it's a web stream, blob, or a native Android file path from Capacitor
+      if (
+        src.startsWith('http://') ||
+        src.startsWith('https://') ||
+        src.startsWith('blob:') ||
+        src.startsWith('data:') ||
+        src.startsWith('content://') ||
+        src.includes('_capacitor_file_') ||
+        src.startsWith('capacitor://')
+      ) {
+        // Keep as-is
+      } else if (getAudioPath) {
         src = await getAudioPath(t.file);
       } else {
-        // Browser/preview fallback — Vite serves audio/ as publicDir
         src = `./${t.file}`;
       }
+
       if (cancelled || !src) return;
       audio.src = src;
       audio.load();
@@ -64,9 +68,8 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     })();
 
     return () => { cancelled = true; };
-  }, [trackIndex, tracks]);
+  }, [trackIndex, tracks, getAudioPath]);
 
-  // Time update listener
   useEffect(() => {
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
@@ -110,12 +113,12 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
   const play = useCallback(() => {
     audio.play().catch(() => {});
     setIsPlaying(true);
-  }, []);
+  }, [audio]);
 
   const pause = useCallback(() => {
     audio.pause();
     setIsPlaying(false);
-  }, []);
+  }, [audio]);
 
   const togglePlay = useCallback(() => {
     if (isPlaying) pause();
@@ -143,13 +146,13 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
         return (p - 1 + tracks.length) % tracks.length;
       });
     }
-  }, [tracks]);
+  }, [audio, tracks]);
 
   const seek = useCallback((fraction) => {
     if (audio.duration) {
       audio.currentTime = Math.min(fraction, 1) * audio.duration;
     }
-  }, []);
+  }, [audio]);
 
   const setVolume = useCallback((v) => {
     const clamped = Math.max(0, Math.min(1, v));
@@ -157,14 +160,14 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     audio.volume = clamped;
     localStorage.setItem('cupid-volume', clamped);
     if (clamped > 0) setMuted(false);
-  }, []);
+  }, [audio]);
 
   const toggleMute = useCallback(() => {
     setMuted((m) => {
       audio.volume = m ? volume : 0;
       return !m;
     });
-  }, [volume]);
+  }, [audio, volume]);
 
   const jumpTo = useCallback((index) => {
     if (index < 0 || index >= tracks.length) return;

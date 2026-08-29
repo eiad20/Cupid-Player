@@ -1,26 +1,28 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Capacitor } from '@capacitor/core';
 import './App.css';
 import useAudioPlayer from './useAudioPlayer';
 import useSpotifyPlayer from './useSpotifyPlayer';
 import useTheme from './useTheme';
 import { login as spotifyLogin, handleCallback, isLoggedIn as isSpotifyLoggedIn, logout as spotifyLogout } from './spotify/auth.js';
 import { fetchPlaylistTracks as fetchSpotifyTracks, fetchMyPlaylists as fetchSpotifyPlaylists } from './spotify/api.js';
-import { login as appleLogin, logout as appleLogout, isLoggedIn as isAppleLoggedIn, initMusicKit } from './apple/auth.js';
+import { login as appleLogin, logout as appleLogout, isLoggedIn as isAppleLoggedIn } from './apple/auth.js';
 import { fetchMyPlaylists as fetchApplePlaylists, fetchPlaylistTracks as fetchAppleTracks } from './apple/api.js';
 import {
   login as youtubeLogin,
   logout as youtubeLogout,
   isLoggedIn as isYouTubeLoggedIn,
   isConfigured as isYouTubeConfigured,
-  cancelLogin as cancelYouTubeLogin,
 } from './youtube/auth.js';
 import {
   parsePlaylistUrl as parseYouTubePlaylistUrl,
-  fetchPlaylistByUrl as fetchYouTubePlaylistByUrl,
   fetchMyPlaylists as fetchYouTubePlaylists,
   fetchPlaylistTracks as fetchYouTubeTracks,
 } from './youtube/api.js';
+
+import { fetchYouTubePlaylist } from './services/youtubeService.js';
+import { pickAndScanDeviceAudio } from './services/localMusicService.js';
 
 import progressBarStars from '../assets/progress_bar_stars.png';
 import star from '../assets/star.png';
@@ -85,7 +87,6 @@ function SettingsDropdown({ value, options, onChange }) {
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', updateRect);
-    // Close on scroll anywhere — positions become stale fast
     window.addEventListener('scroll', () => setOpen(false), true);
     return () => {
       document.removeEventListener('mousedown', onMouseDown);
@@ -132,8 +133,6 @@ function SettingsDropdown({ value, options, onChange }) {
             </button>
           ))}
         </div>,
-        // Portal to .player so CSS custom properties (--color-primary, etc.)
-        // and the theme class still cascade. document.body would orphan them.
         document.querySelector('.player') ?? document.body,
       )}
     </div>
@@ -177,7 +176,6 @@ function MarqueeText({ className, text }) {
 
   return (
     <div className={`${className} marquee-container`} ref={outerRef}>
-      {/* Hidden span to measure true text width */}
       <span ref={textRef} className="marquee-measure">{text}</span>
       <span className={shouldScroll ? 'marquee-scroll' : ''}>
         {text}
@@ -188,6 +186,8 @@ function MarqueeText({ className, text }) {
 }
 
 export default function App() {
+  const isMobile = Capacitor.isNativePlatform();
+
   // ── Source state ─────────────────────────────────────────
   const [source, setSource] = useState('local'); // 'local' | 'streaming'
   const [spotifyConnected, setSpotifyConnected] = useState(isSpotifyLoggedIn());
@@ -211,7 +211,7 @@ export default function App() {
       // ignore
     }
     return 'local';
-  }); // 'spotify' | 'apple' | 'youtube' | 'local'
+  });
   const [playMode, setPlayMode] = useState('normal'); // 'normal' | 'shuffle' | 'repeat'
   const [volumeHovered, setVolumeHovered] = useState(false);
   const [volumeDragging, setVolumeDragging] = useState(false);
@@ -220,14 +220,29 @@ export default function App() {
   const [localTracks, setLocalTracks] = useState([]);
 
   const loadLocalPlaylist = useCallback(async () => {
-    if (!window.cupid?.getLocalPlaylist) return;
-    try {
-      const tracks = await window.cupid.getLocalPlaylist();
-      setLocalTracks(Array.isArray(tracks) ? tracks : []);
-    } catch (err) {
-      console.error('Failed to load local playlist:', err);
+    if (window.cupid?.getLocalPlaylist) {
+      try {
+        const tracks = await window.cupid.getLocalPlaylist();
+        setLocalTracks(Array.isArray(tracks) ? tracks : []);
+      } catch (err) {
+        console.error('Failed to load local playlist:', err);
+      }
     }
   }, []);
+
+  const handlePickDeviceMusic = async () => {
+    try {
+      setSettingsError(null);
+      const picked = await pickAndScanDeviceAudio();
+      if (picked.length > 0) {
+        setLocalTracks(picked);
+        setSource('local');
+        setShowSettings(false);
+      }
+    } catch (err) {
+      setSettingsError(err.message || 'Failed to access device files');
+    }
+  };
 
   useEffect(() => { loadLocalPlaylist(); }, [loadLocalPlaylist]);
 
@@ -277,7 +292,7 @@ export default function App() {
       .finally(() => setLoadingPlaylists(false));
   }, []);
 
-  // ── Fetch YouTube playlists (Data API, requires sign-in) ─
+  // ── Fetch YouTube playlists ────────────────────────────
   const loadYoutubePlaylists = useCallback((silent = false) => {
     setLoadingPlaylists(true);
     if (!silent) setSettingsError(null);
@@ -287,7 +302,7 @@ export default function App() {
       .finally(() => setLoadingPlaylists(false));
   }, []);
 
-  // ── Load a playlist from a YouTube URL (no sign-in) ─────
+  // ── Load a playlist from a YouTube URL ─────────────────
   const loadYoutubePlaylistFromUrl = useCallback(async (rawInput) => {
     setSettingsError(null);
     const parsed = parseYouTubePlaylistUrl(rawInput);
@@ -297,7 +312,7 @@ export default function App() {
     }
     setLoadingPlaylist(true);
     try {
-      const tracks = await fetchYouTubePlaylistByUrl(rawInput);
+      const tracks = await fetchYouTubePlaylist(rawInput);
       if (tracks.length === 0) {
         setSettingsError('Playlist is empty or private');
         return;
@@ -320,7 +335,6 @@ export default function App() {
         try {
           await handleCallback();
           setSpotifyConnected(true);
-          // Small delay to let token settle before fetching
           setTimeout(() => loadSpotifyPlaylists(true), 500);
         } catch (err) {
           setSettingsError(err.message);
@@ -332,9 +346,9 @@ export default function App() {
       }
     }
     checkCallback();
-  }, []);
+  }, [loadSpotifyPlaylists, loadApplePlaylists, loadYoutubePlaylists]);
 
-  // ── Load a playlist by ID (works for all services) ────
+  // ── Load a playlist by ID ──────────────────────────────
   const loadPlaylist = useCallback(async (id, service) => {
     setLoadingPlaylist(true);
     setSettingsError(null);
@@ -411,9 +425,8 @@ export default function App() {
       window.removeEventListener('mouseup', onMouseUp);
     };
   }, [volumeDragging, setVolume]);
+
   const [needleChangeFrame, setNeedleChangeFrame] = useState(0);
-  // null sentinel = haven't seen any track yet; 'No track' = placeholder while
-  // tracks load async. Both should silently set the ref without animating.
   const prevTrackRef = useRef(null);
 
   const currentFrames = isPink ? assets.recordFramesA : assets.recordFramesB;
@@ -427,41 +440,32 @@ export default function App() {
       setNeedleFrame((f) => (f + 1) % assets.needlePlayFrames.length);
     }, 400);
     return () => clearInterval(interval);
-  }, [isPlaying, swapping, currentFrames.length]);
+  }, [isPlaying, swapping, currentFrames.length, assets.needlePlayFrames.length]);
 
-  // Detect song change and trigger swap
-  // Sequence: needle lifts (0→1→2) → records swap → needle lowers (2→1→0)
+  // Detect song change and trigger record swap animation
   useEffect(() => {
     if (prevTrackRef.current === track.title) return;
     const wasInitialOrPlaceholder = prevTrackRef.current === null || prevTrackRef.current === 'No track';
     prevTrackRef.current = track.title;
-    if (track.title === 'No track') return;
-    if (wasInitialOrPlaceholder) return;
-    if (needleLifted) return;
+    if (track.title === 'No track' || wasInitialOrPlaceholder || needleLifted) return;
 
     setNeedleLifted(true);
     setNeedleChangeFrame(0);
 
-    // Show needle lifted (frame 1 = index 1)
     setTimeout(() => setNeedleChangeFrame(1), 200);
-
-    // Start record swap
     setTimeout(() => setSwapping(true), 400);
 
-    // Finish swap, switch color
     setTimeout(() => {
       setIsPink((p) => !p);
       setRecordFrame(0);
       setSwapping(false);
     }, 1000);
 
-    // Needle lower after swap is done, reset to frame 1
     setTimeout(() => {
       setNeedleChangeFrame(0);
       setNeedleLifted(false);
       setNeedleFrame(0);
     }, 1100);
-
   }, [track.title, needleLifted]);
 
   const resizeTL = useResize('top-left');
@@ -474,8 +478,8 @@ export default function App() {
       {/* Base frame */}
       <img src={assets.frame} className="layer" alt="" draggable={false} />
 
-      {/* Window title */}
-      <div className="window-title">cupid player</div>
+      {/* Window title (hidden on mobile) */}
+      {!isMobile && <div className="window-title">cupid player</div>}
 
       {/* Record player centered in frame */}
       <img src={assets.recordPlayer} className="record-player" alt="" draggable={false} />
@@ -500,7 +504,7 @@ export default function App() {
         draggable={false}
       />
 
-      {/* Frame overlay (no background) to clip sliding records */}
+      {/* Frame overlay */}
       <img src={assets.frameNoBg} className="layer frame-overlay" alt="" draggable={false} />
 
       {/* Decorative */}
@@ -527,7 +531,7 @@ export default function App() {
         }}
       />
 
-      {/* Playback control layers (visual only) */}
+      {/* Playback control visual layers */}
       <img src={assets.backwardsButton} className="layer layer-ui" alt="" draggable={false} />
       <img src={isPlaying ? assets.pauseButton : assets.playButton} className="layer layer-ui" alt="" draggable={false} />
       <img src={assets.forwardsButton} className="layer layer-ui" alt="" draggable={false} />
@@ -550,10 +554,14 @@ export default function App() {
         style={{ opacity: playMode === 'normal' ? 0.4 : 0.8 }}
       />
 
-      {/* Window control layers (visual only) */}
-      <img src={assets.minimizerButton} className="layer layer-ui" alt="" draggable={false} />
-      <img src={assets.windowButton} className="layer layer-ui" alt="" draggable={false} />
-      <img src={assets.exitButton} className="layer layer-ui" alt="" draggable={false} />
+      {/* Window control layers (Desktop only) */}
+      {!isMobile && (
+        <>
+          <img src={assets.minimizerButton} className="layer layer-ui" alt="" draggable={false} />
+          <img src={assets.windowButton} className="layer layer-ui" alt="" draggable={false} />
+          <img src={assets.exitButton} className="layer layer-ui" alt="" draggable={false} />
+        </>
+      )}
 
       {/* Settings button layer */}
       <img src={assets.settings} className="layer layer-ui settings-layer" alt="" draggable={false} />
@@ -562,19 +570,15 @@ export default function App() {
       <svg width="0" height="0" style={{ position: 'absolute' }}>
         <defs>
           <clipPath id="album-mask" clipPathUnits="objectBoundingBox">
-            {/* 35x41 centered vertically */}
             <rect x="0.07317" y="0" width="0.85366" height="1" />
-            {/* 37x39 */}
             <rect x="0.04878" y="0.02439" width="0.90244" height="0.95122" />
-            {/* 39x37 */}
             <rect x="0.02439" y="0.04878" width="0.95122" height="0.90244" />
-            {/* 41x35 */}
             <rect x="0" y="0.07317" width="1" height="0.85366" />
           </clipPath>
         </defs>
       </svg>
 
-      {/* Album art clipped to pixel mask */}
+      {/* Album art */}
       {track.art && (
         <div className="album-mask">
           <img src={track.art} className="album-art" alt="" draggable={false} />
@@ -587,9 +591,7 @@ export default function App() {
       {/* Now playing section */}
       <div className="now-playing">
         <div className="track-info">
-          <div className="now-playing-label">
-            now playing...
-          </div>
+          <div className="now-playing-label">now playing...</div>
           <MarqueeText className="track-title" text={track.title} />
           <div className="track-artist">by {track.artist}</div>
         </div>
@@ -601,14 +603,16 @@ export default function App() {
         <span className="time-remaining">{formatTime(duration - currentTime)}</span>
       </div>
 
-      {/* Drag region for moving the window */}
-      <div className="drag-region" />
-
-      {/* Custom resize handles at frame corners */}
-      <div className="resize-handle top-left" onMouseDown={resizeTL} />
-      <div className="resize-handle top-right" onMouseDown={resizeTR} />
-      <div className="resize-handle bottom-left" onMouseDown={resizeBL} />
-      <div className="resize-handle bottom-right" onMouseDown={resizeBR} />
+      {/* Drag & Resize (Desktop only) */}
+      {!isMobile && (
+        <>
+          <div className="drag-region" />
+          <div className="resize-handle top-left" onMouseDown={resizeTL} />
+          <div className="resize-handle top-right" onMouseDown={resizeTR} />
+          <div className="resize-handle bottom-left" onMouseDown={resizeBL} />
+          <div className="resize-handle bottom-right" onMouseDown={resizeBR} />
+        </>
+      )}
 
       {/* Progress bar seek target */}
       <div
@@ -631,7 +635,7 @@ export default function App() {
       <div className="btn btn-play" onClick={togglePlay} />
       <div className="btn btn-next" onClick={next} />
 
-      {/* Volume bar layers — shown on hover or drag */}
+      {/* Volume bar layers */}
       {(volumeHovered || volumeDragging) && (
         <>
           <img src={assets.volumeBarLow} className="layer layer-ui volume-bar-layer" alt="" draggable={false} />
@@ -647,7 +651,7 @@ export default function App() {
         </>
       )}
 
-      {/* Volume icon — hover to reveal bar */}
+      {/* Volume icon */}
       <div
         className={`volume-hover-zone ${(volumeHovered || volumeDragging) ? 'expanded' : ''}`}
         onMouseLeave={() => { if (!volumeDragging) setVolumeHovered(false); }}
@@ -675,35 +679,26 @@ export default function App() {
       {/* Shuffle/repeat click target */}
       <div className="btn btn-playmode" onClick={cyclePlayMode} title={playMode} />
 
-      {/* Window control click targets */}
-      <div className="btn btn-minimize" onClick={() => window.cupid?.minimize()} />
-      <div className="btn btn-window" onClick={() => window.cupid?.maximize()} />
-      <div className="btn btn-exit" onClick={() => window.cupid?.close()} />
+      {/* Window control click targets (Desktop only) */}
+      {!isMobile && (
+        <>
+          <div className="btn btn-minimize" onClick={() => window.cupid?.minimize()} />
+          <div className="btn btn-window" onClick={() => window.cupid?.maximize()} />
+          <div className="btn btn-exit" onClick={() => window.cupid?.close()} />
+        </>
+      )}
 
       {/* Settings button */}
       <div className="btn btn-settings" onClick={() => setShowSettings((v) => !v)} />
 
-      {/* Debug overlays — toggle with showDebug state */}
-      {showDebug && (
-        <>
-          <div className="debug-overlay btn btn-prev" />
-          <div className="debug-overlay btn btn-play" />
-          <div className="debug-overlay btn btn-next" />
-          <div className="debug-overlay volume-hover-zone" />
-          <div className="debug-overlay volume-bar-area-debug" />
-          <div className="debug-overlay btn btn-playmode" />
-        </>
-      )}
-
-      {/* Tracklist button image layer */}
-       <img
-       src={assets.tracklistButton}
+      {/* Tracklist button */}
+      <img
+        src={assets.tracklistButton}
         className="layer layer-ui tracklist-button-layer"
         alt=""
         draggable={false}
-       />
-       {/* Tracklist button click target */}
-      <div className="btn btn-tracklist" onClick={() => setShowTracklist((v) => !v)} /> 
+      />
+      <div className="btn btn-tracklist" onClick={() => setShowTracklist((v) => !v)} />
 
       {/* Tracklist Panel */}
       {showTracklist && (
@@ -741,7 +736,8 @@ export default function App() {
           </div>
         </div>
       )}
-      {/* Settings panel */}
+
+      {/* Settings Panel */}
       {showSettings && (
         <div className="settings-panel">
           <div className="settings-panel-inner">
@@ -777,12 +773,17 @@ export default function App() {
             />
 
             {musicService === 'local' && (
-              <button
-                className="settings-theme-btn"
-                onClick={loadLocalPlaylist}
-              >
-                reload
-              </button>
+              <div className="settings-theme-row">
+                {isMobile ? (
+                  <button className="settings-theme-btn" onClick={handlePickDeviceMusic}>
+                    import device audio
+                  </button>
+                ) : (
+                  <button className="settings-theme-btn" onClick={loadLocalPlaylist}>
+                    reload
+                  </button>
+                )}
+              </div>
             )}
 
             {musicService === 'spotify' && (
