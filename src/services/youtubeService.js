@@ -1,4 +1,4 @@
-const API_BASE = 'http://192.168.1.34:3000/api'; // Use 10.0.2.2 for emulator, or 192.168.1.34 for tablet
+const API_BASE = 'http://13.63.196.240:3000/api';
 
 export async function fetchYouTubePlaylist(url) {
   const res = await fetch(`${API_BASE}/youtube/playlist`, {
