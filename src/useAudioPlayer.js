@@ -30,14 +30,16 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
 
   useEffect(() => {
     const t = tracks[trackIndex];
-    if (!t || !t.file) return;
+    // Allow either t.file (Electron) or t.url (Capacitor)
+    if (!t || !(t.file || t.url)) return;
 
     let cancelled = false;
     audio.pause();
     audio.src = '';
 
     (async () => {
-      let src = t.file;
+      // Prioritize the pre-converted Capacitor URL if it exists
+      let src = t.url || t.file;
       
       // If it's a web stream, blob, or a native Android file path from Capacitor
       if (

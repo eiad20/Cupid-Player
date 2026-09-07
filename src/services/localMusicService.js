@@ -1,56 +1,69 @@
-import { FilePicker } from '@capawesome/capacitor-file-picker';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
-import * as musicMetadata from 'music-metadata-browser';
 
 export async function pickAndScanDeviceAudio() {
-  const result = await FilePicker.pickFiles({
-    types: ['audio/*'],
-    multiple: true,
-    readData: true,
-  });
-
-  const parsedTracks = [];
-
-  for (const file of result.files) {
-    const webPath = Capacitor.convertFileSrc(file.path);
-    let title = file.name.replace(/\.[^/.]+$/, '');
-    let artist = 'Local Storage';
-    let duration = 0;
-    let art = null;
-
-    if (file.data) {
-      try {
-        const byteCharacters = atob(file.data);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const metadata = await musicMetadata.parseBuffer(byteArray, file.mimeType);
-
-        if (metadata.common.title) title = metadata.common.title;
-        if (metadata.common.artist) artist = metadata.common.artist;
-        if (metadata.format.duration) duration = metadata.format.duration;
-
-        if (metadata.common.picture && metadata.common.picture.length > 0) {
-          const pic = metadata.common.picture[0];
-          const base64Pic = btoa(String.fromCharCode(...pic.data));
-          art = `data:${pic.format};base64,${base64Pic}`;
-        }
-      } catch (err) {
-        console.warn('Could not parse metadata for:', file.name, err);
-      }
-    }
-
-    parsedTracks.push({
-      file: webPath,
-      title,
-      artist,
-      duration,
-      art,
-      isLocalDevice: true,
-    });
+  if (!Capacitor.isNativePlatform()) {
+    throw new Error('Auto-scanning requires the compiled mobile app.');
   }
 
-  return parsedTracks;
+  // 1. Request native OS permissions
+  const status = await Filesystem.requestPermissions();
+  if (status.publicStorage !== 'granted') {
+    throw new Error('Storage permission is required to load device music.');
+  }
+
+  // Helper function to RECURSIVELY scan a directory
+  const scanDirectory = async (folderPath) => {
+    let allAudio = [];
+    try {
+      const result = await Filesystem.readdir({
+        path: folderPath,
+        directory: Directory.ExternalStorage,
+      });
+
+      for (const file of result.files) {
+        if (file.type === 'directory') {
+          // If it's a folder (like "Seal" or "Telegram"), dig inside it
+          const subFiles = await scanDirectory(`${folderPath}/${file.name}`);
+          allAudio = [...allAudio, ...subFiles];
+        } else {
+          // If it's a file, check if it's audio
+          const lowerName = file.name.toLowerCase();
+          if (
+            lowerName.endsWith('.mp3') || 
+            lowerName.endsWith('.m4a') || 
+            lowerName.endsWith('.wav') ||
+            lowerName.endsWith('.ogg') ||
+            lowerName.endsWith('.flac')
+          ) {
+            allAudio.push(file);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`Could not read folder: ${folderPath}`, err);
+    }
+    return allAudio;
+  };
+
+  // 2. Scan both Music and Download folders (including all sub-folders)
+  const [musicFiles, downloadFiles] = await Promise.all([
+    scanDirectory('Music'),
+    scanDirectory('Download')
+  ]);
+
+  const allAudioFiles = [...musicFiles, ...downloadFiles];
+
+  // 3. Prevent silent failures if no audio is found
+  if (allAudioFiles.length === 0) {
+    throw new Error('No audio files found in Music or Download folders.');
+  }
+
+  // 4. Format the files for your React player
+  return allAudioFiles.map(file => ({
+    title: file.name.replace(/\.[^/.]+$/, ""), // Strip file extension
+    artist: 'Local Device',
+    url: Capacitor.convertFileSrc(file.uri), // Convert native path to a web-playable URL
+    art: null
+  }));
 }

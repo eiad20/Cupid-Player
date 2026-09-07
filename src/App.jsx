@@ -246,7 +246,15 @@ export default function App() {
 
   useEffect(() => { loadLocalPlaylist(); }, [loadLocalPlaylist]);
 
-  const local = useAudioPlayer(localTracks, playMode, window.cupid?.getLocalAudioPath);
+// Wrap the resolver in useCallback to prevent infinite re-renders
+  const resolveLocalPath = useCallback((t) => {
+    if (window.cupid?.getLocalAudioPath) {
+      return window.cupid.getLocalAudioPath(t.file);
+    }
+    return t.url;
+  }, []);
+
+  const local = useAudioPlayer(localTracks, playMode, resolveLocalPath);
   const streaming = useSpotifyPlayer(streamTracks, playMode);
   const player = source === 'streaming' ? streaming : local;
   const activeTracks = source === 'streaming' ? streamTracks : localTracks;
