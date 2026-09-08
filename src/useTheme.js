@@ -25,6 +25,8 @@ import pinkVolumeBarLow from '../assets/pink/volume_bar_low.png';
 import pinkTracklistButton from '../assets/pink/tracklist_button.png';
 // for now reuse pink for blue, or make a blue version later:
 import blueTracklistButton from '../assets/blue/tracklist_button.png';
+import pinkFrameMobile from '../assets/pink/frame_mobile.png';
+import pinkFrameNoBgMobile from '../assets/pink/frame_no_background_mobile.png';
 
 // ── Shared record animations ────────────────────────────
 import recordA1 from '../assets/animations/record-pink/frame-1.png';
@@ -83,7 +85,9 @@ import blueVolumeBarLow from '../assets/blue/volume_bar_low.png';
 const THEME_ASSETS = {
   pink: {
     frame: pinkFrame,
+    frameMobile: pinkFrameMobile,         // <-- Added mobile frame
     frameNoBg: pinkFrameNoBg,
+    frameNoBgMobile: pinkFrameNoBgMobile, // <-- Added hollow mobile frame
     plant: pinkPlant,
     recordPlayer: pinkRecordPlayer,
     albumFrame: pinkAlbumFrame,

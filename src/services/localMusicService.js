@@ -1,41 +1,65 @@
 import { FilePicker } from '@capawesome/capacitor-file-picker';
 import { Capacitor } from '@capacitor/core';
+import { parseBlob } from 'music-metadata';
+
+const AUDIO_EXTENSIONS = ['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.opus'];
+
+async function extractAlbumArt(url) {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const metadata = await parseBlob(blob);
+    const picture = metadata.common.picture?.[0];
+    if (!picture) return null;
+
+    let binary = "";
+    for (let i = 0; i < picture.data.length; i++) {
+      binary += String.fromCharCode(picture.data[i]);
+    }
+    return `data:${picture.format};base64,${window.btoa(binary)}`;
+  } catch (err) {
+    console.warn('music-metadata failed:', err);
+    return null;
+  }
+}
 
 export async function pickAndScanDeviceAudio() {
   if (!Capacitor.isNativePlatform()) {
     throw new Error('File picker requires the compiled mobile app.');
   }
 
-  // 1. Open the native Android file browser with multiple selection enabled
+  // readData: false — no native byte-buffering, no OOM. Capacitor's
+  // local server already proxies content:// URIs for us.
   const result = await FilePicker.pickFiles({
-    multiple: true, // This fixes the "1 song at a time" issue
-    readData: false // We only need the file path to stream the audio
+    multiple: true,
+    readData: false
   });
 
   if (result.files.length === 0) {
     throw new Error('No files selected.');
   }
 
-  // 2. Filter the selection to ensure we only grab valid audio formats
-  const audioFiles = result.files.filter(file => {
+  const audioFiles = result.files.filter((file) => {
     const lowerName = (file.name || '').toLowerCase();
-    return lowerName.endsWith('.mp3') || 
-           lowerName.endsWith('.m4a') || 
-           lowerName.endsWith('.wav') ||
-           lowerName.endsWith('.ogg') ||
-           lowerName.endsWith('.flac') ||
-           lowerName.endsWith('.opus');
+    return AUDIO_EXTENSIONS.some(ext => lowerName.endsWith(ext));
   });
 
   if (audioFiles.length === 0) {
     throw new Error('None of the selected files were valid audio formats.');
   }
 
-  // 3. Format the selected files for your React player
-  return audioFiles.map(file => ({
-    title: file.name ? file.name.replace(/\.[^/.]+$/, "") : "Unknown Track",
-    artist: 'Local Folder',
-    url: Capacitor.convertFileSrc(file.path), // Convert the native path to a web URL
-    art: null
-  }));
+  // Sequential rather than Promise.all — keeps peak memory down when
+  // scanning a batch, since each file's blob is released before the next.
+  const tracks = [];
+  for (const file of audioFiles) {
+    const playUrl = Capacitor.convertFileSrc(file.path);
+    const artImage = await extractAlbumArt(playUrl);
+    tracks.push({
+      title: file.name ? file.name.replace(/\.[^/.]+$/, "") : "Unknown Track",
+      artist: 'Local Folder',
+      url: playUrl,
+      art: artImage
+    });
+  }
+  return tracks;
 }

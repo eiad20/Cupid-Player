@@ -186,7 +186,28 @@ function MarqueeText({ className, text }) {
 }
 
 export default function App() {
-  const isMobile = Capacitor.isNativePlatform();
+  const isNative = Capacitor.isNativePlatform();
+
+// Determine if the screen is a tall phone ratio (taller than ~16:10 / 5:3)
+const [isPhoneScreen, setIsPhoneScreen] = useState(() => {
+  if (typeof window === 'undefined') return false;
+  const ratio = window.innerHeight / window.innerWidth;
+  // Phones in portrait typically have an aspect ratio > 1.75 (18:9, 19.5:9, 20:9)
+  // Tablets in portrait are usually wider (4:3 is 1.33, 16:10 is 1.6)
+  return ratio > 1.7;
+});
+
+useEffect(() => {
+  const checkRatio = () => {
+    const ratio = window.innerHeight / window.innerWidth;
+    setIsPhoneScreen(ratio > 1.7);
+  };
+  window.addEventListener('resize', checkRatio);
+  return () => window.removeEventListener('resize', checkRatio);
+}, []);
+
+// Only activate the tall layout on phones, not tablets
+const isMobile = isNative && isPhoneScreen;
 
   // ── Source state ─────────────────────────────────────────
   const [source, setSource] = useState('local'); // 'local' | 'streaming'
@@ -488,436 +509,355 @@ export default function App() {
   const resizeBR = useResize('bottom-right');
 
   return (
-    <div className={`player ${theme === 'blue' ? 'theme-blue' : ''}`}>
-      {/* Base frame */}
-      <img src={assets.frame} className="layer" alt="" draggable={false} />
+    <div className="player-viewport">
+      <div className={`player ${theme === 'blue' ? 'theme-blue' : ''} ${isMobile ? 'mobile-layout' : ''}`}>
+        
+        {/* Base frame */}
+        <img 
+          src={isMobile ? (assets.frameMobile || assets.frame) : assets.frame} 
+          className="layer mobile-frame" 
+          alt="" 
+          draggable={false} 
+        />
 
-      {/* Window title (hidden on mobile) */}
-      {!isMobile && <div className="window-title">cupid player</div>}
+        {/* Window title (hidden on mobile) */}
+        {!isMobile && <div className="window-title">cupid player</div>}
 
-      {/* Record player centered in frame */}
-      <img src={assets.recordPlayer} className="record-player" alt="" draggable={false} />
-      <img
-        src={currentFrames[recordFrame]}
-        className={`record-player ${swapping ? 'record-slide-out' : ''}`}
-        alt=""
-        draggable={false}
-      />
-      {swapping && (
+        {/* Record player centered in frame */}
+        <img src={assets.recordPlayer} className="record-player" alt="" draggable={false} />
         <img
-          src={incomingFrames[0]}
-          className="record-player record-slide-in"
+          src={currentFrames[recordFrame]}
+          className={`record-player ${swapping ? 'record-slide-out' : ''}`}
           alt=""
           draggable={false}
         />
-      )}
-      <img
-        src={needleLifted ? assets.needleChangeFrames[needleChangeFrame] : assets.needlePlayFrames[needleFrame]}
-        className="record-player"
-        alt=""
-        draggable={false}
-      />
-
-      {/* Frame overlay */}
-      <img src={assets.frameNoBg} className="layer frame-overlay" alt="" draggable={false} />
-
-      {/* Decorative */}
-      <img src={assets.plant} className="layer layer-ui" alt="" draggable={false} />
-
-      {/* Progress bar layers */}
-      <img src={assets.progressBar} className="layer layer-ui" alt="" draggable={false} />
-      <img
-        src={progressBarStars}
-        className="layer layer-ui"
-        alt=""
-        draggable={false}
-        style={{
-          clipPath: `inset(0 ${(1 - (131 + (hoverProgress ?? progress) * 226 + 10) / 512) * 100}% 0 0)`,
-        }}
-      />
-      <img
-        src={starHovered ? starSelected : star}
-        className={`layer layer-ui star-indicator ${starHovered ? 'star-hovered' : ''}`}
-        alt=""
-        draggable={false}
-        style={{
-          transform: `translateX(calc(-3 / 306 * 100vw + ${(hoverProgress ?? progress) * (226 / 512) * 171.9}vw))`,
-        }}
-      />
-
-      {/* Playback control visual layers */}
-      <img src={assets.backwardsButton} className="layer layer-ui" alt="" draggable={false} />
-      <img src={isPlaying ? assets.pauseButton : assets.playButton} className="layer layer-ui" alt="" draggable={false} />
-      <img src={assets.forwardsButton} className="layer layer-ui" alt="" draggable={false} />
-
-      {/* Volume/mute button layer */}
-      <img
-        src={muted ? assets.muteButton : assets.volumeButton}
-        className="layer layer-ui"
-        alt=""
-        draggable={false}
-        style={{ opacity: 0.8 }}
-      />
-
-      {/* Shuffle/repeat button layer */}
-      <img
-        src={playMode === 'repeat' ? assets.repeatButton : assets.shuffleButton}
-        className="layer layer-ui"
-        alt=""
-        draggable={false}
-        style={{ opacity: playMode === 'normal' ? 0.4 : 0.8 }}
-      />
-
-      {/* Window control layers (Desktop only) */}
-      {!isMobile && (
-        <>
-          <img src={assets.minimizerButton} className="layer layer-ui" alt="" draggable={false} />
-          <img src={assets.windowButton} className="layer layer-ui" alt="" draggable={false} />
-          <img src={assets.exitButton} className="layer layer-ui" alt="" draggable={false} />
-        </>
-      )}
-
-      {/* Settings button layer */}
-      <img src={assets.settings} className="layer layer-ui settings-layer" alt="" draggable={false} />
-
-      {/* SVG clip-path for pixel-art album mask */}
-      <svg width="0" height="0" style={{ position: 'absolute' }}>
-        <defs>
-          <clipPath id="album-mask" clipPathUnits="objectBoundingBox">
-            <rect x="0.07317" y="0" width="0.85366" height="1" />
-            <rect x="0.04878" y="0.02439" width="0.90244" height="0.95122" />
-            <rect x="0.02439" y="0.04878" width="0.95122" height="0.90244" />
-            <rect x="0" y="0.07317" width="1" height="0.85366" />
-          </clipPath>
-        </defs>
-      </svg>
-
-      {/* Album art */}
-      {track.art && (
-        <div className="album-mask">
-          <img src={track.art} className="album-art" alt="" draggable={false} />
-        </div>
-      )}
-
-      {/* Album frame overlay */}
-      <img src={assets.albumFrame} className="layer album-frame-layer" alt="" draggable={false} />
-
-      {/* Now playing section */}
-      <div className="now-playing">
-        <div className="track-info">
-          <div className="now-playing-label">now playing...</div>
-          <MarqueeText className="track-title" text={track.title} />
-          <div className="track-artist">by {track.artist}</div>
-        </div>
-      </div>
-
-      {/* Time display */}
-      <div className="time-display">
-        <span className="time-current">{formatTime(currentTime)}</span>
-        <span className="time-remaining">{formatTime(duration - currentTime)}</span>
-      </div>
-
-      {/* Drag & Resize (Desktop only) */}
-      {!isMobile && (
-        <>
-          <div className="drag-region" />
-          <div className="resize-handle top-left" onMouseDown={resizeTL} />
-          <div className="resize-handle top-right" onMouseDown={resizeTR} />
-          <div className="resize-handle bottom-left" onMouseDown={resizeBL} />
-          <div className="resize-handle bottom-right" onMouseDown={resizeBR} />
-        </>
-      )}
-
-      {/* Progress bar seek target */}
-      <div
-        className="progress-seek"
-        ref={seekRef}
-        onMouseEnter={() => setStarHovered(true)}
-        onMouseLeave={() => { if (!dragging) { setStarHovered(false); } }}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          setDragging(true);
-          const rect = e.currentTarget.getBoundingClientRect();
-          const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-          setHoverProgress(pct);
-          seek(pct);
-        }}
-      />
-
-      {/* Playback control click targets */}
-      <div className="btn btn-prev" onClick={prev} />
-      <div className="btn btn-play" onClick={togglePlay} />
-      <div className="btn btn-next" onClick={next} />
-
-      {/* Volume bar layers */}
-      {(volumeHovered || volumeDragging) && (
-        <>
-          <img src={assets.volumeBarLow} className="layer layer-ui volume-bar-layer" alt="" draggable={false} />
+        {swapping && (
           <img
-            src={assets.volumeBarHigh}
-            className="layer layer-ui volume-bar-layer"
+            src={incomingFrames[0]}
+            className="record-player record-slide-in"
             alt=""
             draggable={false}
-            style={{
-              clipPath: `inset(${((1 - (muted ? 0 : volume)) * (420 - 338) / 512 + 338 / 512) * 100}% 0 0 0)`,
-            }}
-          />
-        </>
-      )}
-
-      {/* Volume icon */}
-      <div
-        className={`volume-hover-zone ${(volumeHovered || volumeDragging) ? 'expanded' : ''}`}
-        onMouseLeave={() => { if (!volumeDragging) setVolumeHovered(false); }}
-      >
-        <div
-          className="btn-volume-icon"
-          onClick={toggleMute}
-          onMouseEnter={() => setVolumeHovered(true)}
-        />
-        {(volumeHovered || volumeDragging) && (
-          <div
-            className="volume-bar-area"
-            ref={volumeBarRef}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              setVolumeDragging(true);
-              const rect = e.currentTarget.getBoundingClientRect();
-              const pct = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / rect.height));
-              setVolume(pct);
-            }}
           />
         )}
-      </div>
+        <img
+          src={needleLifted ? assets.needleChangeFrames[needleChangeFrame] : assets.needlePlayFrames[needleFrame]}
+          className="record-player"
+          alt=""
+          draggable={false}
+        />
 
-      {/* Shuffle/repeat click target */}
-      <div className="btn btn-playmode" onClick={cyclePlayMode} title={playMode} />
+        {/* Frame overlay */}
+        <img 
+          src={isMobile ? (assets.frameNoBgMobile || assets.frameNoBg) : assets.frameNoBg} 
+          className="layer frame-overlay mobile-frame" 
+          alt="" 
+          draggable={false} 
+        />
 
-      {/* Window control click targets (Desktop only) */}
-      {!isMobile && (
-        <>
-          <div className="btn btn-minimize" onClick={() => window.cupid?.minimize()} />
-          <div className="btn btn-window" onClick={() => window.cupid?.maximize()} />
-          <div className="btn btn-exit" onClick={() => window.cupid?.close()} />
-        </>
-      )}
+       {/* Decorative (Stays at the top) */}
+      <img src={assets.plant} className="layer layer-ui plant-image" alt="" draggable={false} />
 
-      {/* Settings button */}
-      <div className="btn btn-settings" onClick={() => setShowSettings((v) => !v)} />
+        {/* Progress bar layers */}
+        <img src={assets.progressBar} className="layer layer-ui shift-down" alt="" draggable={false} />
+        <img
+          src={progressBarStars}
+          className="layer layer-ui shift-down"
+          alt=""
+          draggable={false}
+          style={{
+            clipPath: `inset(0 ${(1 - (131 + (hoverProgress ?? progress) * 226 + 10) / 512) * 100}% 0 0)`,
+          }}
+        />
+        <img
+          src={starHovered ? starSelected : star}
+          className={`layer layer-ui star-indicator shift-down ${starHovered ? 'star-hovered' : ''}`}
+          alt=""
+          draggable={false}
+          style={{
+            transform: `translate(calc(-3 / 306 * 100vw + ${(hoverProgress ?? progress) * (226 / 512) * 171.9}vw), calc(166 * var(--u)))`,
+          }}
+        />
 
-      {/* Tracklist button */}
-      <img
-        src={assets.tracklistButton}
-        className="layer layer-ui tracklist-button-layer"
-        alt=""
-        draggable={false}
-      />
-      <div className="btn btn-tracklist" onClick={() => setShowTracklist((v) => !v)} />
+        {/* Playback control visual layers */}
+        <img src={assets.backwardsButton} className="layer layer-ui shift-down" alt="" draggable={false} />
+        <img src={isPlaying ? assets.pauseButton : assets.playButton} className="layer layer-ui shift-down" alt="" draggable={false} />
+        <img src={assets.forwardsButton} className="layer layer-ui shift-down" alt="" draggable={false} />
 
-      {/* Tracklist Panel */}
-      {showTracklist && (
-        <div className="tracklist-panel">
-          <div className="tracklist-header">
-            <span className="tracklist-title">queue</span>
-            <button className="tracklist-close" onClick={() => setShowTracklist(false)}>✕</button>
+        {/* Volume/mute button layer */}
+        <img
+          src={muted ? assets.muteButton : assets.volumeButton}
+          className="layer layer-ui shift-down"
+          alt=""
+          draggable={false}
+          style={{ opacity: 0.8 }}
+        />
+
+        {/* Shuffle/repeat button layer */}
+        <img
+          src={playMode === 'repeat' ? assets.repeatButton : assets.shuffleButton}
+          className="layer layer-ui shift-down"
+          alt=""
+          draggable={false}
+          style={{ opacity: playMode === 'normal' ? 0.4 : 0.8 }}
+        />
+
+        {/* Window control layers (Desktop only) */}
+        {!isMobile && (
+          <>
+            <img src={assets.minimizerButton} className="layer layer-ui" alt="" draggable={false} />
+            <img src={assets.windowButton} className="layer layer-ui" alt="" draggable={false} />
+            <img src={assets.exitButton} className="layer layer-ui" alt="" draggable={false} />
+          </>
+        )}
+
+        {/* Settings button layer */}
+        <img src={assets.settings} className="layer layer-ui settings-layer" alt="" draggable={false} />
+
+        {/* SVG clip-path for pixel-art album mask */}
+        <svg width="0" height="0" style={{ position: 'absolute' }}>
+          <defs>
+            <clipPath id="album-mask" clipPathUnits="objectBoundingBox">
+              <rect x="0.07317" y="0" width="0.85366" height="1" />
+              <rect x="0.04878" y="0.02439" width="0.90244" height="0.95122" />
+              <rect x="0.02439" y="0.04878" width="0.95122" height="0.90244" />
+              <rect x="0" y="0.07317" width="1" height="0.85366" />
+            </clipPath>
+          </defs>
+        </svg>
+
+        {/* Album art */}
+        {track.art && (
+          <div className="album-mask">
+            <img src={track.art} className="album-art" alt="" draggable={false} />
           </div>
-          <div className="tracklist-scroll">
-            {activeTracks.length === 0 ? (
-              <div className="tracklist-empty">playlist is empty...</div>
-            ) : (
-              activeTracks.map((t, index) => {
-                const isActive = track.title === t.title && track.artist === t.artist;
-                return (
-                  <button
-                    key={index}
-                    className={`tracklist-item ${isActive ? 'active' : ''}`}
-                    onClick={() => {
-                      if (jumpTo) jumpTo(index);
-                      setShowTracklist(false);
-                    }}
-                  >
-                    <span className="tracklist-index">{index + 1}</span>
-                    {t.art && <img src={t.art} className="tracklist-art" alt="" />}
-                    <div className="tracklist-info">
-                      <span className="tracklist-item-title">{t.title}</span>
-                      {t.artist && <span className="tracklist-item-artist">{t.artist}</span>}
-                    </div>
-                    {isActive && <span className="tracklist-playing">♪</span>}
-                  </button>
-                );
-              })
-            )}
+        )}
+
+        {/* Album frame overlay */}
+        <img src={assets.albumFrame} className="layer album-frame-layer shift-down" alt="" draggable={false} />
+
+        {/* Now playing section */}
+        <div className="now-playing">
+          <div className="track-info">
+            <div className="now-playing-label">now playing...</div>
+            <MarqueeText className="track-title" text={track.title} />
+            <div className="track-artist">by {track.artist}</div>
           </div>
         </div>
-      )}
 
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="settings-panel">
-          <div className="settings-panel-inner">
-            <div className="settings-label">theme</div>
-            <div className="settings-theme-row">
-              <button
-                className={`settings-theme-btn ${theme === 'pink' ? 'active' : ''}`}
-                onClick={() => { if (theme !== 'pink') toggleTheme(); }}
-              >
-                pink
-              </button>
-              <button
-                className={`settings-theme-btn ${theme === 'blue' ? 'active' : ''}`}
-                onClick={() => { if (theme !== 'blue') toggleTheme(); }}
-              >
-                blue
-              </button>
-            </div>
-            <div className="settings-label">music</div>
-            <SettingsDropdown
-              value={musicService}
-              options={[
-                { value: 'local', label: 'local' },
-                { value: 'spotify', label: 'spotify' },
-                { value: 'apple', label: 'apple' },
-                { value: 'youtube', label: 'youtube' },
-              ]}
-              onChange={(next) => {
-                setMusicService(next);
-                try { localStorage.setItem('cupid-player-music-service', next); } catch { /* ignore */ }
-                if (next === 'local') setSource('local');
+        {/* Time display */}
+        <div className="time-display">
+          <span className="time-current">{formatTime(currentTime)}</span>
+          <span className="time-remaining">{formatTime(duration - currentTime)}</span>
+        </div>
+
+        {/* Drag & Resize (Desktop only) */}
+        {!isMobile && (
+          <>
+            <div className="drag-region" />
+            <div className="resize-handle top-left" onMouseDown={resizeTL} />
+            <div className="resize-handle top-right" onMouseDown={resizeTR} />
+            <div className="resize-handle bottom-left" onMouseDown={resizeBL} />
+            <div className="resize-handle bottom-right" onMouseDown={resizeBR} />
+          </>
+        )}
+
+        {/* Progress bar seek target */}
+        <div
+          className="progress-seek"
+          ref={seekRef}
+          onMouseEnter={() => setStarHovered(true)}
+          onMouseLeave={() => { if (!dragging) { setStarHovered(false); } }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setDragging(true);
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            setHoverProgress(pct);
+            seek(pct);
+          }}
+        />
+
+        {/* Playback control click targets */}
+        <div className="btn btn-prev" onClick={prev} />
+        <div className="btn btn-play" onClick={togglePlay} />
+        <div className="btn btn-next" onClick={next} />
+
+        {/* Volume bar layers */}
+        {(volumeHovered || volumeDragging) && (
+          <>
+            <img src={assets.volumeBarLow} className="layer layer-ui volume-bar-layer shift-down" alt="" draggable={false} />
+            <img
+              src={assets.volumeBarHigh}
+              className="layer layer-ui volume-bar-layer shift-down"
+              alt=""
+              draggable={false}
+              style={{
+                clipPath: `inset(${((1 - (muted ? 0 : volume)) * (420 - 338) / 512 + 338 / 512) * 100}% 0 0 0)`,
               }}
             />
+          </>
+        )}
 
-            {musicService === 'local' && (
+        {/* Volume icon */}
+        <div
+          className={`volume-hover-zone shift-down ${(volumeHovered || volumeDragging) ? 'expanded' : ''}`}
+          onMouseLeave={() => { if (!volumeDragging) setVolumeHovered(false); }}
+        >
+          <div
+            className="btn-volume-icon"
+            onClick={toggleMute}
+            onMouseEnter={() => setVolumeHovered(true)}
+          />
+          {(volumeHovered || volumeDragging) && (
+            <div
+              className="volume-bar-area"
+              ref={volumeBarRef}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setVolumeDragging(true);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / rect.height));
+                setVolume(pct);
+              }}
+            />
+          )}
+        </div>
+
+        {/* Shuffle/repeat click target */}
+        <div className="btn btn-playmode" onClick={cyclePlayMode} title={playMode} />
+
+        {/* Window control click targets (Desktop only) */}
+        {!isMobile && (
+          <>
+            <div className="btn btn-minimize" onClick={() => window.cupid?.minimize()} />
+            <div className="btn btn-window" onClick={() => window.cupid?.maximize()} />
+            <div className="btn btn-exit" onClick={() => window.cupid?.close()} />
+          </>
+        )}
+
+        {/* Settings button */}
+        <div className="btn btn-settings" onClick={() => setShowSettings((v) => !v)} />
+
+        {/* Tracklist button */}
+        <img
+          src={assets.tracklistButton}
+          className="layer layer-ui tracklist-button-layer"
+          alt=""
+          draggable={false}
+        />
+        <div className="btn btn-tracklist" onClick={() => setShowTracklist((v) => !v)} />
+
+        {/* Tracklist Panel */}
+        {showTracklist && (
+          <div className="tracklist-panel">
+            <div className="tracklist-header">
+              <span className="tracklist-title">queue</span>
+              <button className="tracklist-close" onClick={() => setShowTracklist(false)}>✕</button>
+            </div>
+            <div className="tracklist-scroll">
+              {activeTracks.length === 0 ? (
+                <div className="tracklist-empty">playlist is empty...</div>
+              ) : (
+                activeTracks.map((t, index) => {
+                  const isActive = track.title === t.title && track.artist === t.artist;
+                  return (
+                    <button
+                      key={index}
+                      className={`tracklist-item ${isActive ? 'active' : ''}`}
+                      onClick={() => {
+                        if (jumpTo) jumpTo(index);
+                        setShowTracklist(false);
+                      }}
+                    >
+                      <span className="tracklist-index">{index + 1}</span>
+                      {t.art && <img src={t.art} className="tracklist-art" alt="" />}
+                      <div className="tracklist-info">
+                        <span className="tracklist-item-title">{t.title}</span>
+                        {t.artist && <span className="tracklist-item-artist">{t.artist}</span>}
+                      </div>
+                      {isActive && <span className="tracklist-playing">♪</span>}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <div className="settings-panel">
+            <div className="settings-panel-inner">
+              <div className="settings-label">theme</div>
               <div className="settings-theme-row">
-                {isMobile ? (
-                  <button className="settings-theme-btn" onClick={handlePickDeviceMusic}>
-                    import device audio
-                  </button>
-                ) : (
-                  <button className="settings-theme-btn" onClick={loadLocalPlaylist}>
-                    reload
-                  </button>
-                )}
+                <button
+                  className={`settings-theme-btn ${theme === 'pink' ? 'active' : ''}`}
+                  onClick={() => { if (theme !== 'pink') toggleTheme(); }}
+                >
+                  pink
+                </button>
+                <button
+                  className={`settings-theme-btn ${theme === 'blue' ? 'active' : ''}`}
+                  onClick={() => { if (theme !== 'blue') toggleTheme(); }}
+                >
+                  blue
+                </button>
               </div>
-            )}
+              <div className="settings-label">music</div>
+              <SettingsDropdown
+                value={musicService}
+                options={[
+                  { value: 'local', label: 'local' },
+                  { value: 'spotify', label: 'spotify' },
+                  { value: 'apple', label: 'apple' },
+                  { value: 'youtube', label: 'youtube' },
+                ]}
+                onChange={(next) => {
+                  setMusicService(next);
+                  try { localStorage.setItem('cupid-player-music-service', next); } catch { /* ignore */ }
+                  if (next === 'local') setSource('local');
+                }}
+              />
 
-            {musicService === 'spotify' && (
-              !spotifyConnected ? (
-                <button className="settings-theme-btn" onClick={() => spotifyLogin()}>
-                  log in
-                </button>
-              ) : (
-                <>
-                  <PlaylistList
-                    loading={loadingPlaylists}
-                    playlists={spotifyPlaylists}
-                    loadingPlaylist={loadingPlaylist}
-                    onSelect={(id) => loadPlaylist(id, 'spotify')}
-                  />
-                  <div className="settings-theme-row">
-                    <button
-                      className={`settings-theme-btn ${loadingPlaylists ? 'disabled' : ''}`}
-                      disabled={loadingPlaylists}
-                      onClick={() => loadSpotifyPlaylists()}
-                    >
-                      refresh
+              {musicService === 'local' && (
+                <div className="settings-theme-row">
+                  {isMobile ? (
+                    <button className="settings-theme-btn" onClick={handlePickDeviceMusic}>
+                      import device audio
                     </button>
-                    <button className="settings-theme-btn" onClick={() => {
-                      spotifyLogout();
-                      setSpotifyConnected(false);
-                      setSpotifyPlaylists([]);
-                      if (source === 'streaming') setSource('local');
-                    }}>
-                      logout
+                  ) : (
+                    <button className="settings-theme-btn" onClick={loadLocalPlaylist}>
+                      reload
                     </button>
-                  </div>
-                </>
-              )
-            )}
+                  )}
+                </div>
+              )}
 
-            {musicService === 'apple' && (
-              !appleConnected ? (
-                <button className="settings-theme-btn" onClick={async () => {
-                  try {
-                    await appleLogin();
-                    setAppleConnected(true);
-                    loadApplePlaylists();
-                  } catch (err) {
-                    setSettingsError(err.message);
-                  }
-                }}>
-                  log in
-                </button>
-              ) : (
-                <>
-                  <PlaylistList
-                    loading={loadingPlaylists}
-                    playlists={applePlaylists}
-                    loadingPlaylist={loadingPlaylist}
-                    onSelect={(id) => loadPlaylist(id, 'apple')}
-                  />
-                  <div className="settings-theme-row">
-                    <button
-                      className={`settings-theme-btn ${loadingPlaylists ? 'disabled' : ''}`}
-                      disabled={loadingPlaylists}
-                      onClick={() => loadApplePlaylists()}
-                    >
-                      refresh
-                    </button>
-                    <button className="settings-theme-btn" onClick={() => {
-                      appleLogout();
-                      setAppleConnected(false);
-                      setApplePlaylists([]);
-                      if (source === 'streaming') setSource('local');
-                    }}>
-                      logout
-                    </button>
-                  </div>
-                </>
-              )
-            )}
-
-            {musicService === 'youtube' && (
-              isYouTubeConfigured() ? (
-                !youtubeConnected ? (
-                  <button
-                    className={`settings-theme-btn ${youtubeLoggingIn ? 'disabled' : ''}`}
-                    disabled={youtubeLoggingIn}
-                    onClick={async () => {
-                      setYoutubeLoggingIn(true);
-                      setSettingsError(null);
-                      try {
-                        await youtubeLogin();
-                        setYoutubeConnected(true);
-                        loadYoutubePlaylists();
-                      } catch (err) {
-                        setSettingsError(err.message);
-                      } finally {
-                        setYoutubeLoggingIn(false);
-                      }
-                    }}
-                  >
-                    {youtubeLoggingIn ? 'waiting for browser...' : 'log in with google'}
+              {musicService === 'spotify' && (
+                !spotifyConnected ? (
+                  <button className="settings-theme-btn" onClick={() => spotifyLogin()}>
+                    log in
                   </button>
                 ) : (
                   <>
                     <PlaylistList
                       loading={loadingPlaylists}
-                      playlists={youtubePlaylists}
+                      playlists={spotifyPlaylists}
                       loadingPlaylist={loadingPlaylist}
-                      onSelect={(id) => loadPlaylist(id, 'youtube')}
+                      onSelect={(id) => loadPlaylist(id, 'spotify')}
                     />
                     <div className="settings-theme-row">
                       <button
                         className={`settings-theme-btn ${loadingPlaylists ? 'disabled' : ''}`}
                         disabled={loadingPlaylists}
-                        onClick={() => loadYoutubePlaylists()}
+                        onClick={() => loadSpotifyPlaylists()}
                       >
                         refresh
                       </button>
                       <button className="settings-theme-btn" onClick={() => {
-                        youtubeLogout();
-                        setYoutubeConnected(false);
-                        setYoutubePlaylists([]);
+                        spotifyLogout();
+                        setSpotifyConnected(false);
+                        setSpotifyPlaylists([]);
                         if (source === 'streaming') setSource('local');
                       }}>
                         logout
@@ -925,36 +865,130 @@ export default function App() {
                     </div>
                   </>
                 )
-              ) : (
-                <>
-                  <input
-                    className="settings-input"
-                    type="text"
-                    placeholder="paste a youtube playlist link"
-                    value={youtubeUrlInput}
-                    onChange={(e) => setYoutubeUrlInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && youtubeUrlInput.trim()) {
-                        loadYoutubePlaylistFromUrl(youtubeUrlInput.trim());
-                      }
-                    }}
-                    disabled={loadingPlaylist}
-                  />
-                  <button
-                    className={`settings-theme-btn ${loadingPlaylist || !youtubeUrlInput.trim() ? 'disabled' : ''}`}
-                    onClick={() => loadYoutubePlaylistFromUrl(youtubeUrlInput.trim())}
-                    disabled={loadingPlaylist || !youtubeUrlInput.trim()}
-                  >
-                    {loadingPlaylist ? 'loading...' : 'load playlist'}
-                  </button>
-                </>
-              )
-            )}
+              )}
 
-            {settingsError && <div className="settings-error">{settingsError}</div>}
+              {musicService === 'apple' && (
+                !appleConnected ? (
+                  <button className="settings-theme-btn" onClick={async () => {
+                    try {
+                      await appleLogin();
+                      setAppleConnected(true);
+                      loadApplePlaylists();
+                    } catch (err) {
+                      setSettingsError(err.message);
+                    }
+                  }}>
+                    log in
+                  </button>
+                ) : (
+                  <>
+                    <PlaylistList
+                      loading={loadingPlaylists}
+                      playlists={applePlaylists}
+                      loadingPlaylist={loadingPlaylist}
+                      onSelect={(id) => loadPlaylist(id, 'apple')}
+                    />
+                    <div className="settings-theme-row">
+                      <button
+                        className={`settings-theme-btn ${loadingPlaylists ? 'disabled' : ''}`}
+                        disabled={loadingPlaylists}
+                        onClick={() => loadApplePlaylists()}
+                      >
+                        refresh
+                      </button>
+                      <button className="settings-theme-btn" onClick={() => {
+                        appleLogout();
+                        setAppleConnected(false);
+                        setApplePlaylists([]);
+                        if (source === 'streaming') setSource('local');
+                      }}>
+                        logout
+                      </button>
+                    </div>
+                  </>
+                )
+              )}
+
+              {musicService === 'youtube' && (
+                isYouTubeConfigured() ? (
+                  !youtubeConnected ? (
+                    <button
+                      className={`settings-theme-btn ${youtubeLoggingIn ? 'disabled' : ''}`}
+                      disabled={youtubeLoggingIn}
+                      onClick={async () => {
+                        setYoutubeLoggingIn(true);
+                        setSettingsError(null);
+                        try {
+                          await youtubeLogin();
+                          setYoutubeConnected(true);
+                          loadYoutubePlaylists();
+                        } catch (err) {
+                          setSettingsError(err.message);
+                        } finally {
+                          setYoutubeLoggingIn(false);
+                        }
+                      }}
+                    >
+                      {youtubeLoggingIn ? 'waiting for browser...' : 'log in with google'}
+                    </button>
+                  ) : (
+                    <>
+                      <PlaylistList
+                        loading={loadingPlaylists}
+                        playlists={youtubePlaylists}
+                        loadingPlaylist={loadingPlaylist}
+                        onSelect={(id) => loadPlaylist(id, 'youtube')}
+                      />
+                      <div className="settings-theme-row">
+                        <button
+                          className={`settings-theme-btn ${loadingPlaylists ? 'disabled' : ''}`}
+                          disabled={loadingPlaylists}
+                          onClick={() => loadYoutubePlaylists()}
+                        >
+                          refresh
+                        </button>
+                        <button className="settings-theme-btn" onClick={() => {
+                          youtubeLogout();
+                          setYoutubeConnected(false);
+                          setYoutubePlaylists([]);
+                          if (source === 'streaming') setSource('local');
+                        }}>
+                          logout
+                        </button>
+                      </div>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <input
+                      className="settings-input"
+                      type="text"
+                      placeholder="paste a youtube playlist link"
+                      value={youtubeUrlInput}
+                      onChange={(e) => setYoutubeUrlInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && youtubeUrlInput.trim()) {
+                          loadYoutubePlaylistFromUrl(youtubeUrlInput.trim());
+                        }
+                      }}
+                      disabled={loadingPlaylist}
+                    />
+                    <button
+                      className={`settings-theme-btn ${loadingPlaylist || !youtubeUrlInput.trim() ? 'disabled' : ''}`}
+                      onClick={() => loadYoutubePlaylistFromUrl(youtubeUrlInput.trim())}
+                      disabled={loadingPlaylist || !youtubeUrlInput.trim()}
+                    >
+                      {loadingPlaylist ? 'loading...' : 'load playlist'}
+                    </button>
+                  </>
+                )
+              )}
+
+              {settingsError && <div className="settings-error">{settingsError}</div>}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
