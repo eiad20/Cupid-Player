@@ -54,6 +54,7 @@ import blueNeedleChange1 from '../assets/animations/blue/needle-change/frame-1.p
 import blueNeedleChange2 from '../assets/animations/blue/needle-change/frame-2.png';
 import blueNeedleChange3 from '../assets/animations/blue/needle-change/frame-3.png';
 
+
 const SHARED_RECORD_FRAMES = {
   recordFramesA: [recordA1, recordA2, recordA3, recordA4],
   recordFramesB: [recordB1, recordB2, recordB3, recordB4],
@@ -81,7 +82,8 @@ import blueShuffleButton from '../assets/blue/shuffle_button.png';
 import blueRepeatButton from '../assets/blue/repeat_button.png';
 import blueVolumeBarHigh from '../assets/blue/volume_bar_high.png';
 import blueVolumeBarLow from '../assets/blue/volume_bar_low.png';
-
+import blueFrameMobile from '../assets/blue/frame_mobile.png';
+import blueFrameNoBgMobile from '../assets/blue/frame_no_background_mobile.png';
 const THEME_ASSETS = {
   pink: {
     frame: pinkFrame,
@@ -114,7 +116,9 @@ const THEME_ASSETS = {
   },
   blue: {
     frame: blueFrame,
+    frameMobile: blueFrameMobile,
     frameNoBg: blueFrameNoBg,
+    frameNoBgMobile: blueFrameNoBgMobile,
     plant: bluePlant,
     recordPlayer: blueRecordPlayer,
     albumFrame: blueAlbumFrame,

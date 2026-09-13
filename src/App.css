@@ -696,18 +696,17 @@
   word-break: break-word;
 }
 
-/* ── Tracklist ───────────────────────────────────────────── */
-
 .tracklist-button-layer {
-  transform: scale(0.055);
-  transform-origin: calc(282 / 512 * 100%) calc(48 / 512 * 100%);  /* was 57, now 51 */
+  /* Keep original height, shift horizontally to the left by 80 units */
+  transform: translateX(calc(-80 * var(--u))) scale(0.055);
+  transform-origin: calc(282 / 512 * 100%) calc(48 / 512 * 100%);
   opacity: 0.75;
   transition: opacity 0.15s;
 }
 
 .btn-tracklist {
-  left: calc((282 - 110) * var(--u));
-  top: calc((38 - 23) * var(--u));  /* was 48, now 42 */
+  left: calc((202 - 110) * var(--u));
+  top: calc((48 - 23) * var(--u));    /* Changed from 38 to 48 to lower the click box */
   width: calc(20 * var(--u));
   height: calc(20 * var(--u));
   z-index: 150;
@@ -715,7 +714,6 @@
   -webkit-app-region: no-drag;
   background: none;
 }
-
 .btn-tracklist:hover ~ .tracklist-button-layer,
 .tracklist-button-layer:hover {
   opacity: 1;
