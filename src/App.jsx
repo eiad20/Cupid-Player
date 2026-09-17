@@ -239,6 +239,30 @@ const isMobile = isNative && isPhoneScreen;
   const volumeBarRef = useRef(null);
   const [showDebug] = useState(false);
   const [localTracks, setLocalTracks] = useState([]);
+  // --- Add the hearts state and click handler here ---
+  const [hearts, setHearts] = useState([]);
+
+const handleCatClick = (e) => {
+    const id = Date.now();
+    
+    const catLeft = e.target.offsetLeft;
+    const catTop = e.target.offsetTop;
+    const catWidth = e.target.offsetWidth;
+    const catHeight = e.target.offsetHeight; // Grab the height
+
+    const offsetX = Math.floor(Math.random() * 20) - 10;
+    
+    const x = catLeft + (catWidth / 2) + offsetX;
+    
+    // If on mobile, push the start position down by 30% of the cat's height
+    const y = isMobile ? catTop + (catHeight * 0.3) : catTop;
+
+    setHearts((prev) => [...prev, { id, x, y }]);
+
+    setTimeout(() => {
+      setHearts((prev) => prev.filter((heart) => heart.id !== id));
+    }, 1000);
+  };
 
   const loadLocalPlaylist = useCallback(async () => {
     if (window.cupid?.getLocalPlaylist) {
@@ -520,8 +544,8 @@ const isMobile = isNative && isPhoneScreen;
           draggable={false} 
         />
 
-        {/* Window title (hidden on mobile) */}
-        {!isMobile && <div className="window-title">cupid player</div>}
+       {/* Window title (hidden on native mobile/tablet devices) */}
+       {!isNative && <div className="window-title">cupid player</div>}
 
         {/* Record player centered in frame */}
         <img src={assets.recordPlayer} className="record-player" alt="" draggable={false} />
@@ -554,8 +578,38 @@ const isMobile = isNative && isPhoneScreen;
           draggable={false} 
         />
 
-       {/* Decorative (Stays at the top) */}
-      <img src={assets.plant} className="layer layer-ui plant-image" alt="" draggable={false} />
+        {/* Decorative (Stays at the top) */}
+        <img src={assets.plant} className="layer layer-ui plant-image" alt="" draggable={false} />
+
+        {/* The Cat & Floating Hearts */}
+        {assets.cat && (
+          <div 
+            className="cat-container" 
+            style={{ position: 'absolute', zIndex: 25 }}
+          >
+            <img 
+              src={assets.cat} 
+              className="cat-image" 
+              alt="Cat" 
+              draggable={false} 
+              onClick={handleCatClick}
+            />
+            {/* Render the floating hearts */}
+            {hearts.map((heart) => (
+              <div 
+                key={heart.id} 
+                className="floating-heart"
+                style={{
+                  left: `${heart.x}px`,
+                  top: `${heart.y}px`,
+                  transform: 'translate(-50%, -50%)'
+                }}
+              >
+                ♥
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Progress bar layers */}
         <img src={assets.progressBar} className="layer layer-ui shift-down" alt="" draggable={false} />

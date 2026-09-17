@@ -23,11 +23,10 @@ import pinkRepeatButton from '../assets/pink/repeat_button.png';
 import pinkVolumeBarHigh from '../assets/pink/volume_bar_high.png';
 import pinkVolumeBarLow from '../assets/pink/volume_bar_low.png';
 import pinkTracklistButton from '../assets/pink/tracklist_button.png';
-// for now reuse pink for blue, or make a blue version later:
 import blueTracklistButton from '../assets/blue/tracklist_button.png';
 import pinkFrameMobile from '../assets/pink/frame_mobile.png';
 import pinkFrameNoBgMobile from '../assets/pink/frame_no_background_mobile.png';
-
+import pinkCat from '../assets/pink/cat.gif';
 // ── Shared record animations ────────────────────────────
 import recordA1 from '../assets/animations/record-pink/frame-1.png';
 import recordA2 from '../assets/animations/record-pink/frame-2.png';
@@ -64,6 +63,7 @@ const SHARED_RECORD_FRAMES = {
 import blueFrame from '../assets/blue/frame.png';
 import blueFrameNoBg from '../assets/blue/frame_no_background.png';
 import bluePlant from '../assets/blue/plant.png';
+import blueCat from '../assets/blue/blackcat.gif';
 import blueRecordPlayer from '../assets/blue/record_player.png';
 import blueAlbumFrame from '../assets/blue/album_frame.png';
 import blueBackwardsButton from '../assets/blue/backwards_button.png';
@@ -91,6 +91,7 @@ const THEME_ASSETS = {
     frameNoBg: pinkFrameNoBg,
     frameNoBgMobile: pinkFrameNoBgMobile, // <-- Added hollow mobile frame
     plant: pinkPlant,
+    cat: pinkCat,
     recordPlayer: pinkRecordPlayer,
     albumFrame: pinkAlbumFrame,
     backwardsButton: pinkBackwardsButton,
@@ -120,6 +121,7 @@ const THEME_ASSETS = {
     frameNoBg: blueFrameNoBg,
     frameNoBgMobile: blueFrameNoBgMobile,
     plant: bluePlant,
+    cat: blueCat,
     recordPlayer: blueRecordPlayer,
     albumFrame: blueAlbumFrame,
     backwardsButton: blueBackwardsButton,
