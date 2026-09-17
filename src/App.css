@@ -2,7 +2,10 @@
   /* Default Desktop/Tablet scaling */
   --u: min(calc(100vw / 306), calc(100vh / 497)); 
 }
-
+/* Remove default mobile tap highlight from all elements globally */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
 /* Full-screen wrapper: centers .player and letterboxes/pillarboxes it so
    the fixed 306x497 design always fits, whatever the device's aspect
    ratio is. Wrap your existing <div className="player"> with
