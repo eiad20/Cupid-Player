@@ -27,6 +27,10 @@ import blueTracklistButton from '../assets/blue/tracklist_button.png';
 import pinkFrameMobile from '../assets/pink/frame_mobile.png';
 import pinkFrameNoBgMobile from '../assets/pink/frame_no_background_mobile.png';
 import pinkCat from '../assets/pink/cat.gif';
+import pinkClockFace from '../assets/pink/pink_clock.png';
+import pinkHourHand from '../assets/pink/Hours_arrow_pink.png';
+import pinkMinuteHand from '../assets/pink/Minutes_arrow_pink.png';
+import pinkSecondHand from '../assets/pink/Seconds_arrow_pink.png';
 // ── Shared record animations ────────────────────────────
 import recordA1 from '../assets/animations/record-pink/frame-1.png';
 import recordA2 from '../assets/animations/record-pink/frame-2.png';
@@ -84,6 +88,9 @@ import blueVolumeBarHigh from '../assets/blue/volume_bar_high.png';
 import blueVolumeBarLow from '../assets/blue/volume_bar_low.png';
 import blueFrameMobile from '../assets/blue/frame_mobile.png';
 import blueFrameNoBgMobile from '../assets/blue/frame_no_background_mobile.png';
+import blueClockFace from '../assets/blue/blue_clock.png';
+import blueHourHand from '../assets/blue/Hours_arrow_blue.png';
+import blueMinuteHand from '../assets/blue/Minutes_arrow_blue.png';
 const THEME_ASSETS = {
   pink: {
     frame: pinkFrame,
@@ -111,6 +118,10 @@ const THEME_ASSETS = {
     volumeBarHigh: pinkVolumeBarHigh,
     volumeBarLow: pinkVolumeBarLow,
     tracklistButton: pinkTracklistButton,
+    clockFace: pinkClockFace,
+    hourHand: pinkHourHand,
+    minuteHand: pinkMinuteHand,
+    secondHand: pinkSecondHand,
     ...SHARED_RECORD_FRAMES,
     needlePlayFrames: [pinkNeedlePlay1, pinkNeedlePlay2, pinkNeedlePlay3],
     needleChangeFrames: [pinkNeedleChange1, pinkNeedleChange2, pinkNeedleChange3],
@@ -141,6 +152,9 @@ const THEME_ASSETS = {
     volumeBarHigh: blueVolumeBarHigh,
     volumeBarLow: blueVolumeBarLow,
     tracklistButton: blueTracklistButton,
+    clockFace: blueClockFace,
+    hourHand: blueHourHand,
+    minuteHand: blueMinuteHand,
     ...SHARED_RECORD_FRAMES,
     needlePlayFrames: [blueNeedlePlay1, blueNeedlePlay2, blueNeedlePlay3],
     needleChangeFrames: [blueNeedleChange1, blueNeedleChange2, blueNeedleChange3],

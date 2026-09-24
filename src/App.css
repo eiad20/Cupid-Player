@@ -2,10 +2,12 @@
   /* Default Desktop/Tablet scaling */
   --u: min(calc(100vw / 306), calc(100vh / 497)); 
 }
+
 /* Remove default mobile tap highlight from all elements globally */
 * {
   -webkit-tap-highlight-color: transparent;
 }
+
 /* Full-screen wrapper: centers .player and letterboxes/pillarboxes it so
    the fixed 306x497 design always fits, whatever the device's aspect
    ratio is. Wrap your existing <div className="player"> with
@@ -39,7 +41,6 @@
   --color-secondary: #1a6b6b;
   --color-panel-text: #C8D3F6;
 }
-
 
 .layer {
   position: absolute;
@@ -85,7 +86,6 @@
   height: calc(50 * var(--u)); /* top area of frame for dragging */
   z-index: 100;
   -webkit-app-region: drag;
-
 }
 
 /* Custom resize handles at frame corners (below bow) */
@@ -94,7 +94,6 @@
   width: calc(12 * var(--u));
   height: calc(12 * var(--u));
   z-index: 200;
-
   -webkit-app-region: no-drag;
   pointer-events: auto;
 }
@@ -113,20 +112,17 @@
 }
 
 .btn-minimize {
-
   left: calc((331 - 110) * var(--u));
   top: calc((48 - 23) * var(--u));
 }
 
 .btn-window {
-
   left: calc((355 - 110) * var(--u));
   top: calc((48 - 23) * var(--u));
   width: calc(19 * var(--u));
 }
 
 .btn-exit {
-
   left: calc((378 - 110) * var(--u));
   top: calc((48 - 23) * var(--u));
 }
@@ -377,7 +373,6 @@
   z-index: 999;
 }
 
-
 /* Debug overlay for volume bar seek area (absolute positioned to match) */
 .volume-bar-area-debug {
   position: absolute;
@@ -401,7 +396,6 @@
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
-
 
 /* Playback control click targets */
 .btn-prev {
@@ -594,111 +588,6 @@
   border-bottom-right-radius: calc(5 * var(--u));
 }
 
-/* ── Spotify panel ───────────────────────────────────────── */
-
-/* Small toggle button positioned near the window controls */
-.btn-spotify-toggle {
-  left: calc((307 - 110) * var(--u));
-  top: calc((48 - 23) * var(--u));
-  width: calc(20 * var(--u));
-  height: calc(20 * var(--u));
-  opacity: 0.6;
-  transition: opacity 0.15s;
-  background: url('../assets/spotify_icon.svg') center / calc(14 * var(--u)) no-repeat;
-}
-
-.btn-spotify-toggle:hover {
-  opacity: 1;
-}
-
-
-/* Dropdown panel for Spotify connection */
-.spotify-panel {
-  position: absolute;
-  top: calc((75 - 23) * var(--u));
-  right: calc((526 - 400 - 110) * var(--u));
-  z-index: 300;
-  -webkit-app-region: no-drag;
-  pointer-events: auto;
-}
-
-.spotify-panel-inner {
-  background: #2a1a2a;
-  border: calc(2 * var(--u)) solid #5a3a4a;
-  border-radius: calc(4 * var(--u));
-  padding: calc(8 * var(--u));
-  min-width: calc(120 * var(--u));
-  display: flex;
-  flex-direction: column;
-  gap: calc(5 * var(--u));
-  image-rendering: pixelated;
-}
-
-.spotify-label {
-  font-family: 'Rainyhearts', monospace;
-  font-size: calc(11 * var(--u));
-  color: #8a6a7a;
-  white-space: nowrap;
-}
-
-.spotify-input {
-  font-family: 'Rainyhearts', monospace;
-  font-size: calc(10 * var(--u));
-  background: #1a0e1a;
-  border: calc(1 * var(--u)) solid #5a3a4a;
-  border-radius: calc(2 * var(--u));
-  color: #d4a4b4;
-  padding: calc(3 * var(--u)) calc(4 * var(--u));
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.spotify-input::placeholder {
-  color: #5a3a4a;
-}
-
-.spotify-btn-row {
-  display: flex;
-  gap: calc(4 * var(--u));
-}
-
-.spotify-btn {
-  font-family: 'Rainyhearts', monospace;
-  font-size: calc(10 * var(--u));
-  background: #5a3a4a;
-  border: none;
-  border-radius: calc(2 * var(--u));
-  color: #f4d4e4;
-  padding: calc(2 * var(--u)) calc(6 * var(--u));
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.spotify-btn:hover {
-  background: #7a4a6a;
-}
-
-.spotify-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.spotify-btn-disconnect {
-  background: #4a2a2a;
-}
-
-.spotify-btn-disconnect:hover {
-  background: #6a3a3a;
-}
-
-.spotify-error {
-  font-family: 'Rainyhearts', monospace;
-  font-size: calc(9 * var(--u));
-  color: #c44;
-  word-break: break-word;
-}
-
 .tracklist-button-layer {
   /* Keep original height, shift horizontally to the left by 80 units */
   transform: translateX(calc(-80 * var(--u))) scale(0.055);
@@ -866,10 +755,10 @@
   font-size: calc(10 * var(--u));
   opacity: 0.8;
 }
+
 /* =========================================
    MOBILE LAYOUT OVERRIDES 
    ========================================= */
-
 .player.mobile-layout {
   /* Recalculate scaling for the taller 663px screen */
   --u: min(calc(100vw / 306), calc(100vh / 663));
@@ -897,6 +786,7 @@
 .player.mobile-layout .album-mask {
   transform: translateY(calc(166 * var(--u)));
 }
+
 /* Rest the record player on the new floor */
 .player.mobile-layout .record-player {
   top: calc(250 * var(--u)) !important; /* Increased from 180 to push it down */
@@ -906,6 +796,7 @@
 .player.mobile-layout .plant-image {
   transform: translateY(calc(35 * var(--u))); /* Decreased from 50 to pull it up */
 }
+
 /* ── Decorative Cat (Pink Theme Default) ───────────────────────── */
 .cat-image {
   position: absolute;
@@ -920,11 +811,11 @@
   -webkit-tap-highlight-color: transparent;
   outline: none;
 }
+
 .floating-heart {
-  position: absolute; /* Changed back from fixed */
+  position: absolute;
   color: #fd3466;
   font-size: calc(16 * var(--u));
-  z-index: 9999;
   pointer-events: none;
   animation: floatUpAndFade 1s ease-out forwards;
 }
@@ -952,9 +843,93 @@
   width: calc(105 * var(--u)); /* Increase this number to make it bigger (was 65–85) */
   z-index: 5;
 }
+
 /* Mobile adjustment for the blue window cat */
 .theme-blue.mobile-layout .cat-image {
   left: calc(110 * var(--u)) !important;
   top: calc(180 * var(--u)) !important;
   width: calc(125 * var(--u));
+}
+
+/* ── Analog Wall Clock ───────────────────────────────── */
+.wall-clock {
+  position: absolute;
+  left: calc(60 * var(--u));   /* Moved right (was 60, but left edge of frame is 0) */
+  top: calc(60 * var(--u));    /* Moved down below the title bar (was 45) */
+  width: calc(80 * var(--u));  /* Slightly scale down the clock body if needed */
+  height: calc(80 * var(--u));
+  z-index: 12; 
+  pointer-events: none;
+  user-select: none;
+}
+
+.clock-face {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.clock-hand {
+  position: absolute;
+  /* Centers the hand relative to the clock face */
+  left: 50%;
+  top: 50%;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* ── Clock Hands Default (Pink Theme) ── */
+.clock-hour-hand {
+  width: calc(15 * var(--u)); 
+  height: auto;
+  z-index: 13;
+}
+
+.clock-minute-hand {
+  width: calc(14 * var(--u)); 
+  height: auto;
+  z-index: 14;
+}
+
+.clock-second-hand {
+  width: calc(16 * var(--u)); 
+  height: auto;
+  z-index: 15;
+}
+
+/* ── Blue Theme Hand Overrides ── */
+.theme-blue .clock-hour-hand {
+  width: calc(20 * var(--u)); /* Sprite canvas is wide due to padding */
+  height: auto;
+  z-index: 13;
+}
+
+.theme-blue .clock-minute-hand {
+  height: calc(40 * var(--u)); /* Sprite canvas is tall due to padding */
+  width: auto;
+  z-index: 14;
+}
+
+.theme-blue .clock-hand {
+  /* Default is 50%. Lower this number to nudge both blue hands left */
+  left: 45%; 
+  top: 52%; /* Slight lift up to center directly over the dial dot */
+}
+
+/* Optional mobile layout position offset */
+.player.mobile-layout .wall-clock {
+  top: calc(90 * var(--u));
+  left: calc(60 * var(--u));
+}
+
+/* Mobile layout clock position & size */
+.player.mobile-layout .wall-clock {
+  top: calc(110 * var(--u));  /* Pushes clock down for taller phone screen */
+  left: calc(45 * var(--u));  /* Nudges slightly left to balance the frame */
+  width: calc(95 * var(--u)); /* Increases clock size (default is 80) */
+  height: calc(95 * var(--u));
 }

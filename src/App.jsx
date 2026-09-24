@@ -3,12 +3,8 @@ import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
 import './App.css';
 import useAudioPlayer from './useAudioPlayer';
-import useSpotifyPlayer from './useSpotifyPlayer';
+
 import useTheme from './useTheme';
-import { login as spotifyLogin, handleCallback, isLoggedIn as isSpotifyLoggedIn, logout as spotifyLogout } from './spotify/auth.js';
-import { fetchPlaylistTracks as fetchSpotifyTracks, fetchMyPlaylists as fetchSpotifyPlaylists } from './spotify/api.js';
-import { login as appleLogin, logout as appleLogout, isLoggedIn as isAppleLoggedIn } from './apple/auth.js';
-import { fetchMyPlaylists as fetchApplePlaylists, fetchPlaylistTracks as fetchAppleTracks } from './apple/api.js';
 import {
   login as youtubeLogin,
   logout as youtubeLogout,
@@ -211,28 +207,24 @@ const isMobile = isNative && isPhoneScreen;
 
   // ── Source state ─────────────────────────────────────────
   const [source, setSource] = useState('local'); // 'local' | 'streaming'
-  const [spotifyConnected, setSpotifyConnected] = useState(isSpotifyLoggedIn());
-  const [appleConnected, setAppleConnected] = useState(isAppleLoggedIn());
   const [youtubeConnected, setYoutubeConnected] = useState(isYouTubeLoggedIn());
   const [youtubeLoggingIn, setYoutubeLoggingIn] = useState(false);
   const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
   const [streamTracks, setStreamTracks] = useState([]);
-  const [spotifyPlaylists, setSpotifyPlaylists] = useState([]);
-  const [applePlaylists, setApplePlaylists] = useState([]);
   const [youtubePlaylists, setYoutubePlaylists] = useState([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [loadingPlaylist, setLoadingPlaylist] = useState(false);
   const [settingsError, setSettingsError] = useState(null);
   const [showTracklist, setShowTracklist] = useState(false);
   const [musicService, setMusicService] = useState(() => {
-    try {
-      const stored = localStorage.getItem('cupid-player-music-service');
-      if (stored === 'spotify' || stored === 'apple' || stored === 'youtube' || stored === 'local') return stored;
-    } catch {
-      // ignore
-    }
-    return 'local';
-  });
+  try {
+    const stored = localStorage.getItem('cupid-player-music-service');
+    if (stored === 'youtube' || stored === 'local') return stored;
+  } catch {
+    // ignore
+  }
+  return 'local';
+});
   const [playMode, setPlayMode] = useState('normal'); // 'normal' | 'shuffle' | 'repeat'
   const [volumeHovered, setVolumeHovered] = useState(false);
   const [volumeDragging, setVolumeDragging] = useState(false);
@@ -300,7 +292,7 @@ const handleCatClick = (e) => {
   }, []);
 
   const local = useAudioPlayer(localTracks, playMode, resolveLocalPath);
-  const streaming = useSpotifyPlayer(streamTracks, playMode);
+  const streaming = local;
   const player = source === 'streaming' ? streaming : local;
   const activeTracks = source === 'streaming' ? streamTracks : localTracks;
 
@@ -323,26 +315,6 @@ const handleCatClick = (e) => {
 
   const cyclePlayMode = useCallback(() => {
     setPlayMode((m) => m === 'normal' ? 'shuffle' : m === 'shuffle' ? 'repeat' : 'normal');
-  }, []);
-
-  // ── Fetch Spotify playlists ────────────────────────────
-  const loadSpotifyPlaylists = useCallback((silent = false) => {
-    setLoadingPlaylists(true);
-    if (!silent) setSettingsError(null);
-    fetchSpotifyPlaylists()
-      .then((p) => { setSpotifyPlaylists(p); setSettingsError(null); })
-      .catch((err) => { if (!silent) setSettingsError(err.message); })
-      .finally(() => setLoadingPlaylists(false));
-  }, []);
-
-  // ── Fetch Apple Music playlists ────────────────────────
-  const loadApplePlaylists = useCallback((silent = false) => {
-    setLoadingPlaylists(true);
-    if (!silent) setSettingsError(null);
-    fetchApplePlaylists()
-      .then((p) => { setApplePlaylists(p); setSettingsError(null); })
-      .catch((err) => { if (!silent) setSettingsError(err.message); })
-      .finally(() => setLoadingPlaylists(false));
   }, []);
 
   // ── Fetch YouTube playlists ────────────────────────────
@@ -386,26 +358,11 @@ const handleCatClick = (e) => {
     }
   }, []);
 
-  // ── Handle Spotify OAuth callback on mount ─────────────
-  useEffect(() => {
-    async function checkCallback() {
-      const params = new URLSearchParams(window.location.search);
-      if (params.has('code')) {
-        try {
-          await handleCallback();
-          setSpotifyConnected(true);
-          setTimeout(() => loadSpotifyPlaylists(true), 500);
-        } catch (err) {
-          setSettingsError(err.message);
-        }
-      } else {
-        if (isSpotifyLoggedIn()) loadSpotifyPlaylists(true);
-        if (isAppleLoggedIn()) loadApplePlaylists(true);
-        if (isYouTubeLoggedIn()) loadYoutubePlaylists(true);
-      }
-    }
-    checkCallback();
-  }, [loadSpotifyPlaylists, loadApplePlaylists, loadYoutubePlaylists]);
+ useEffect(() => {
+  if (isYouTubeLoggedIn()) {
+    loadYoutubePlaylists(true);
+  }
+}, [loadYoutubePlaylists]);
 
   // ── Load a playlist by ID ──────────────────────────────
   const loadPlaylist = useCallback(async (id, service) => {
@@ -531,6 +488,35 @@ const handleCatClick = (e) => {
   const resizeTR = useResize('top-right');
   const resizeBL = useResize('bottom-left');
   const resizeBR = useResize('bottom-right');
+  // ── Analog Clock Angles ──────────────────────────────────
+  const [clockAngles, setClockAngles] = useState(() => {
+    const d = new Date();
+    const s = d.getSeconds();
+    const m = d.getMinutes() + s / 60;
+    const h = (d.getHours() % 12) + m / 60;
+    return {
+      hour: h * 30,    
+      minute: m * 6,   
+      second: s * 6,   // 360 / 60 = 6 deg/second
+    };
+  });
+
+  useEffect(() => {
+    const updateHands = () => {
+      const d = new Date();
+      const s = d.getSeconds();
+      const m = d.getMinutes() + s / 60;
+      const h = (d.getHours() % 12) + m / 60;
+      setClockAngles({
+        hour: h * 30,
+        minute: m * 6,
+        second: s * 6,
+      });
+    };
+
+    const timer = setInterval(updateHands, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <div className="player-viewport">
@@ -580,12 +566,78 @@ const handleCatClick = (e) => {
 
         {/* Decorative (Stays at the top) */}
         <img src={assets.plant} className="layer layer-ui plant-image" alt="" draggable={false} />
+        {/* Analog Wall Clock */}
+        {assets.clockFace && (
+          <div className="wall-clock">
+            {/* Clock Face / Body */}
+            <img 
+              src={assets.clockFace} 
+              className="clock-face" 
+              alt="Wall Clock" 
+              draggable={false} 
+            />
+            {/* Hour Hand */}
+            {assets.hourHand && (
+              <img
+                src={assets.hourHand}
+                className="clock-hand clock-hour-hand"
+                alt=""
+                draggable={false}
+                style={theme === 'blue' ? {
+                  /* Blue hour hand: points RIGHT, pivot is the circular ring */
+                  transformOrigin: '23.8% 50%',
+                  transform: `translate(-23.8%, -50%) rotate(${clockAngles.hour - 90}deg)`
+                } : {
+                  /* Pink hour hand */
+                  transformOrigin: '15% 50%',
+                  transform: `translate(-15%, -50%) rotate(${clockAngles.hour - 90}deg)`
+                }}
+              />
+            )}
+            
+            {/* Minute Hand */}
+            {assets.minuteHand && (
+              <img
+                src={assets.minuteHand}
+                className="clock-hand clock-minute-hand"
+                alt=""
+                draggable={false}
+                style={theme === 'blue' ? {
+                  /* Nudged slightly left (48%) and slightly up (66%) */
+                  transformOrigin: '48% 66%',
+                  transform: `translate(-48%, -66%) rotate(${clockAngles.minute}deg)`
+                } : {
+                  /* Pink minute hand */
+                  transformOrigin: '12% 50%',
+                  transform: `translate(-12%, -50%) rotate(${clockAngles.minute - 90}deg)`
+                }}
+              />
+            )}
+
+            {/* Second Hand (Pink only) */}
+            {assets.secondHand && (
+              <img
+                src={assets.secondHand}
+                className="clock-hand clock-second-hand"
+                alt=""
+                draggable={false}
+                style={{
+                  transformOrigin: '10% 50%',
+                  transform: `translate(-10%, -50%) rotate(${clockAngles.second - 90}deg)`
+                }}
+              />
+            )}
+          </div>
+        )}
 
         {/* The Cat & Floating Hearts */}
         {assets.cat && (
           <div 
             className="cat-container" 
-            style={{ position: 'absolute', zIndex: 25 }}
+            style={{ 
+              position: 'absolute', 
+              zIndex: theme === 'blue' ? 5 : 25 
+            }}
           >
             <img 
               src={assets.cat} 
@@ -602,7 +654,9 @@ const handleCatClick = (e) => {
                 style={{
                   left: `${heart.x}px`,
                   top: `${heart.y}px`,
-                  transform: 'translate(-50%, -50%)'
+                  transform: 'translate(-50%, -50%)',
+                  /* Behind turntable (z-index 10) in blue theme, high in pink */
+                  zIndex: theme === 'blue' ? 8 : 9999,
                 }}
               >
                 ♥
@@ -656,14 +710,13 @@ const handleCatClick = (e) => {
         />
 
         {/* Window control layers (Desktop only) */}
-        {!isMobile && (
+        {!isNative && (
           <>
             <img src={assets.minimizerButton} className="layer layer-ui" alt="" draggable={false} />
             <img src={assets.windowButton} className="layer layer-ui" alt="" draggable={false} />
             <img src={assets.exitButton} className="layer layer-ui" alt="" draggable={false} />
           </>
         )}
-
         {/* Settings button layer */}
         <img src={assets.settings} className="layer layer-ui settings-layer" alt="" draggable={false} />
 
@@ -705,7 +758,7 @@ const handleCatClick = (e) => {
         </div>
 
         {/* Drag & Resize (Desktop only) */}
-        {!isMobile && (
+        {!isNative && (
           <>
             <div className="drag-region" />
             <div className="resize-handle top-left" onMouseDown={resizeTL} />
@@ -781,7 +834,7 @@ const handleCatClick = (e) => {
         <div className="btn btn-playmode" onClick={cyclePlayMode} title={playMode} />
 
         {/* Window control click targets (Desktop only) */}
-        {!isMobile && (
+        {!isNative && (
           <>
             <div className="btn btn-minimize" onClick={() => window.cupid?.minimize()} />
             <div className="btn btn-window" onClick={() => window.cupid?.maximize()} />
@@ -862,8 +915,6 @@ const handleCatClick = (e) => {
                 value={musicService}
                 options={[
                   { value: 'local', label: 'local' },
-                  { value: 'spotify', label: 'spotify' },
-                  { value: 'apple', label: 'apple' },
                   { value: 'youtube', label: 'youtube' },
                 ]}
                 onChange={(next) => {
@@ -885,82 +936,6 @@ const handleCatClick = (e) => {
                     </button>
                   )}
                 </div>
-              )}
-
-              {musicService === 'spotify' && (
-                !spotifyConnected ? (
-                  <button className="settings-theme-btn" onClick={() => spotifyLogin()}>
-                    log in
-                  </button>
-                ) : (
-                  <>
-                    <PlaylistList
-                      loading={loadingPlaylists}
-                      playlists={spotifyPlaylists}
-                      loadingPlaylist={loadingPlaylist}
-                      onSelect={(id) => loadPlaylist(id, 'spotify')}
-                    />
-                    <div className="settings-theme-row">
-                      <button
-                        className={`settings-theme-btn ${loadingPlaylists ? 'disabled' : ''}`}
-                        disabled={loadingPlaylists}
-                        onClick={() => loadSpotifyPlaylists()}
-                      >
-                        refresh
-                      </button>
-                      <button className="settings-theme-btn" onClick={() => {
-                        spotifyLogout();
-                        setSpotifyConnected(false);
-                        setSpotifyPlaylists([]);
-                        if (source === 'streaming') setSource('local');
-                      }}>
-                        logout
-                      </button>
-                    </div>
-                  </>
-                )
-              )}
-
-              {musicService === 'apple' && (
-                !appleConnected ? (
-                  <button className="settings-theme-btn" onClick={async () => {
-                    try {
-                      await appleLogin();
-                      setAppleConnected(true);
-                      loadApplePlaylists();
-                    } catch (err) {
-                      setSettingsError(err.message);
-                    }
-                  }}>
-                    log in
-                  </button>
-                ) : (
-                  <>
-                    <PlaylistList
-                      loading={loadingPlaylists}
-                      playlists={applePlaylists}
-                      loadingPlaylist={loadingPlaylist}
-                      onSelect={(id) => loadPlaylist(id, 'apple')}
-                    />
-                    <div className="settings-theme-row">
-                      <button
-                        className={`settings-theme-btn ${loadingPlaylists ? 'disabled' : ''}`}
-                        disabled={loadingPlaylists}
-                        onClick={() => loadApplePlaylists()}
-                      >
-                        refresh
-                      </button>
-                      <button className="settings-theme-btn" onClick={() => {
-                        appleLogout();
-                        setAppleConnected(false);
-                        setApplePlaylists([]);
-                        if (source === 'streaming') setSource('local');
-                      }}>
-                        logout
-                      </button>
-                    </div>
-                  </>
-                )
               )}
 
               {musicService === 'youtube' && (
