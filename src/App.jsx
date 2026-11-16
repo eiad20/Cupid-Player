@@ -1,6 +1,7 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
+import useServerStatus from './services/useServerStatus';
 import './App.css';
 import useAudioPlayer from './useAudioPlayer';
 
@@ -17,13 +18,31 @@ import {
   fetchPlaylistTracks as fetchYouTubeTracks,
 } from './youtube/api.js';
 
-import { fetchYouTubePlaylist } from './services/youtubeService.js';
+import {
+  fetchYouTubePlaylist,
+  getStreamUrlById,
+  searchYouTube,
+  prefetchYouTubeTrack,
+  diagnoseStream,
+} from './services/youtubeService.js';
 import { pickAndScanDeviceAudio } from './services/localMusicService.js';
 
 import progressBarStars from '../assets/progress_bar_stars.png';
 import star from '../assets/star.png';
 import starSelected from '../assets/star_selected.png';
+import searchIconPink from '../assets/pink/search.png';
+import searchIconBlue from '../assets/blue/search.png';
+import frame1 from '../assets/pink/frame.png';
+/*import frame2 from '../assets/pink/frame_2.png';
+import frame3 from '../assets/pink/frame_3.png';
+import frame4 from '../assets/pink/frame_4.png';*/
+import frameMobile1 from '../assets/pink/frame_mobile.png';
+/*import frameMobile2 from '../assets/pink/frame_mobile_2.png';
+import frameMobile3 from '../assets/pink/frame_mobile_3.png';
+import frameMobile4 from '../assets/pink/frame_mobile_4.png';*/
 
+const pinkDesktopFrames = [frame1];
+const pinkMobileFrames = [frameMobile1];
 function useResize(corner) {
   const onMouseDown = useCallback((e) => {
     e.preventDefault();
@@ -181,9 +200,39 @@ function MarqueeText({ className, text }) {
   );
 }
 
+// Give YouTube tracks a playable url via the companion server (host lives in youtubeService.js)
+const withStreamUrl = (t) => ({
+  ...t,
+  url: t.url || (t.videoId ? getStreamUrlById(t.videoId) : undefined),
+});
+
+// Search button icon: a PNG per theme (assets/pink/search.png, assets/blue/search.png)
+function SearchIcon({ src }) {
+  return (
+    <div className="search-icon-layer" aria-hidden="true">
+      <img
+        src={src}
+        alt=""
+        draggable={false}
+        style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain', imageRendering: 'auto' }}
+      />
+    </div>
+  );
+}
+
+// What the little status bubble says for each kind of playback failure
+const FAILURE_MESSAGES = {
+  offline: "can't reach the server",
+  cookies: 'server needs fresh cookies',
+  unavailable: 'track unavailable, skipping',
+  timeout: 'download timed out, skipping',
+  format: 'no audio for this track, skipping',
+  unknown: 'could not play this track, skipping',
+};
+
 export default function App() {
   const isNative = Capacitor.isNativePlatform();
-
+  const serverStatus = useServerStatus();
 // Determine if the screen is a tall phone ratio (taller than ~16:10 / 5:3)
 const [isPhoneScreen, setIsPhoneScreen] = useState(() => {
   if (typeof window === 'undefined') return false;
@@ -204,6 +253,8 @@ useEffect(() => {
 
 // Only activate the tall layout on phones, not tablets
 const isMobile = isNative && isPhoneScreen;
+// Select a random frame index (0 to 3) once when the app first loads
+const [frameIndex] = useState(() => Math.floor(Math.random() * pinkDesktopFrames.length));
 
   // ── Source state ─────────────────────────────────────────
   const [source, setSource] = useState('local'); // 'local' | 'streaming'
@@ -216,6 +267,14 @@ const isMobile = isNative && isPhoneScreen;
   const [loadingPlaylist, setLoadingPlaylist] = useState(false);
   const [settingsError, setSettingsError] = useState(null);
   const [showTracklist, setShowTracklist] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+  const failStreakRef = useRef(0);
+  const playerApiRef = useRef({});
   const [musicService, setMusicService] = useState(() => {
   try {
     const stored = localStorage.getItem('cupid-player-music-service');
@@ -291,10 +350,47 @@ const handleCatClick = (e) => {
     return t.url;
   }, []);
 
-  const local = useAudioPlayer(localTracks, playMode, resolveLocalPath);
-  const streaming = local;
-  const player = source === 'streaming' ? streaming : local;
+  // One player, always fed the list that is currently active (local or streaming)
   const activeTracks = source === 'streaming' ? streamTracks : localTracks;
+
+  // ── Status bubble + failure handling ───────────────────
+  const showToast = useCallback((text, ms = 3500) => {
+    clearTimeout(toastTimerRef.current);
+    setToast(text);
+    if (ms) toastTimerRef.current = setTimeout(() => setToast(null), ms);
+  }, []);
+
+  const handleTrackError = useCallback(async (failedTrack) => {
+    const { next: skipNext, pause: stopPlayback } = playerApiRef.current;
+    failStreakRef.current += 1;
+
+    const reason = failedTrack && failedTrack.videoId
+      ? await diagnoseStream(failedTrack.videoId)
+      : 'unknown';
+
+    // Skipping cannot fix these, so stop and say why.
+    if (reason === 'offline' || reason === 'cookies') {
+      showToast(FAILURE_MESSAGES[reason], 6000);
+      failStreakRef.current = 0;
+      if (stopPlayback) stopPlayback();
+      return;
+    }
+    // Three bad tracks in a row: stop instead of hammering the server.
+    if (failStreakRef.current >= 3) {
+      showToast('several tracks failed in a row, stopping', 6000);
+      failStreakRef.current = 0;
+      if (stopPlayback) stopPlayback();
+      return;
+    }
+    showToast(FAILURE_MESSAGES[reason] || FAILURE_MESSAGES.unknown, 2500);
+    setTimeout(() => { if (skipNext) skipNext(); }, 1800);
+  }, [showToast]);
+
+  const player = useAudioPlayer(activeTracks, playMode, resolveLocalPath, {
+    onError: handleTrackError,
+    onPlaying: () => { failStreakRef.current = 0; },
+    onPrefetch: (t) => { if (t && t.videoId) prefetchYouTubeTrack(t.videoId); },
+  });
 
   const {
     track,
@@ -311,7 +407,50 @@ const handleCatClick = (e) => {
     muted,
     toggleMute,
     jumpTo,
+    loading,
+    pause,
   } = player;
+  playerApiRef.current = { next, pause };
+
+  // "fetching track..." bubble while the server downloads a track for the first time
+  useEffect(() => {
+    if (!loading || source !== 'streaming') return undefined;
+    const timer = setTimeout(() => showToast('fetching track...', 0), 1500);
+    return () => {
+      clearTimeout(timer);
+      setToast((cur) => (cur === 'fetching track...' ? null : cur));
+    };
+  }, [loading, source, track.title, showToast]);
+
+  // ── Search YouTube ─────────────────────────────────────
+  const searchYoutubeTracks = useCallback(async (query) => {
+    const q = query.trim();
+    if (!q) return;
+    setSearchError(null);
+    setSearching(true);
+    try {
+      const rawTracks = await searchYouTube(q);
+      if (rawTracks.length === 0) {
+        setSearchError('no results');
+        return;
+      }
+      const tracks = rawTracks.map((t) => withStreamUrl({
+        ...t,
+        art: t.art || (t.videoId ? `https://i.ytimg.com/vi/${t.videoId}/mqdefault.jpg` : null),
+      }));
+      setStreamTracks(tracks);
+      setSource('streaming');
+      setSearchInput('');
+      setShowSearch(false);
+      setShowTracklist(true);
+      setMusicService('youtube');
+      try { localStorage.setItem('cupid-player-music-service', 'youtube'); } catch { /* ignore */ }
+    } catch (err) {
+      setSearchError(err.message || 'search failed');
+    } finally {
+      setSearching(false);
+    }
+  }, []);
 
   const cyclePlayMode = useCallback(() => {
     setPlayMode((m) => m === 'normal' ? 'shuffle' : m === 'shuffle' ? 'repeat' : 'normal');
@@ -344,7 +483,7 @@ const handleCatClick = (e) => {
       }
       // The companion server only returns { videoId, title, artist, duration } —
       // no art field — so derive the thumbnail client-side when it's missing.
-      const tracks = rawTracks.map((t) => ({
+      const tracks = rawTracks.map((t) => withStreamUrl({
         ...t,
         art: t.art || (t.videoId ? `https://i.ytimg.com/vi/${t.videoId}/mqdefault.jpg` : null),
       }));
@@ -379,7 +518,7 @@ const handleCatClick = (e) => {
         setSettingsError('Playlist is empty');
         return;
       }
-      setStreamTracks(tracks);
+      setStreamTracks(tracks.map(withStreamUrl));
       setSource('streaming');
     } catch (err) {
       setSettingsError(err.message);
@@ -524,11 +663,19 @@ const handleCatClick = (e) => {
         
         {/* Base frame */}
         <img 
-          src={isMobile ? (assets.frameMobile || assets.frame) : assets.frame} 
+          src={theme === 'pink' 
+            ? (isMobile ? pinkMobileFrames[frameIndex] : pinkDesktopFrames[frameIndex])
+            : (isMobile ? assets.frameMobile : assets.frame)
+          } 
           className="layer mobile-frame" 
           alt="" 
           draggable={false} 
         />
+
+        {/* Ambient Lighting Overlay (Tints the room & turntable based on the window) */}
+        {theme === 'pink' && (
+          <div className={`layer lighting-overlay light-effect-${frameIndex + 1}`} />
+        )}
 
        {/* Window title (hidden on native mobile/tablet devices) */}
        {!isNative && <div className="window-title">cupid player</div>}
@@ -556,13 +703,15 @@ const handleCatClick = (e) => {
           draggable={false}
         />
 
-        {/* Frame overlay */}
+        {/* Frame overlay - only render if not on pink theme */}
+        {theme !== 'pink' && (
         <img 
           src={isMobile ? (assets.frameNoBgMobile || assets.frameNoBg) : assets.frameNoBg} 
           className="layer frame-overlay mobile-frame" 
           alt="" 
           draggable={false} 
         />
+        )}
 
         {/* Decorative (Stays at the top) */}
         <img src={assets.plant} className="layer layer-ui plant-image" alt="" draggable={false} />
@@ -843,7 +992,19 @@ const handleCatClick = (e) => {
         )}
 
         {/* Settings button */}
-        <div className="btn btn-settings" onClick={() => setShowSettings((v) => !v)} />
+        <div className="btn btn-settings" onClick={() => { setShowSettings((v) => !v); setShowSearch(false); }} />
+
+        {/* Search button, right of settings (tablet/phone only: desktop has the window controls there) */}
+        {isNative && (
+          <>
+            <div
+              className="btn btn-search"
+              title="search"
+              onClick={() => { setShowSearch((v) => !v); setShowSettings(false); }}
+            />
+            <SearchIcon src={theme === 'blue' ? searchIconBlue : searchIconPink} />
+          </>
+        )}
 
         {/* Tracklist button */}
         <img
@@ -853,6 +1014,13 @@ const handleCatClick = (e) => {
           draggable={false}
         />
         <div className="btn btn-tracklist" onClick={() => setShowTracklist((v) => !v)} />
+
+       {toast && <div className="cupid-toast">{toast}</div>}
+
+        <div
+          className={`server-dot ${serverStatus}`}
+          title={`Server: ${serverStatus}`}
+        />
 
         {/* Tracklist Panel */}
         {showTracklist && (
@@ -887,6 +1055,35 @@ const handleCatClick = (e) => {
                   );
                 })
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Search Panel */}
+        {showSearch && (
+          <div className="settings-panel">
+            <div className="settings-panel-inner">
+              <div className="settings-label">search youtube</div>
+              <input
+                className="settings-input"
+                type="text"
+                placeholder="song or artist"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchInput.trim()) searchYoutubeTracks(searchInput);
+                }}
+                disabled={searching}
+                autoFocus
+              />
+              <button
+                className={`settings-theme-btn ${searching || !searchInput.trim() ? 'disabled' : ''}`}
+                onClick={() => searchYoutubeTracks(searchInput)}
+                disabled={searching || !searchInput.trim()}
+              >
+                {searching ? 'searching...' : 'search'}
+              </button>
+              {searchError && <div className="settings-error">{searchError}</div>}
             </div>
           </div>
         )}

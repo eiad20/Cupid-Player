@@ -1,10 +1,23 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath) {
-  const audioRef = useRef(new Audio());
+// options (all optional):
+//   onError(track, mediaErrorCode)  called when the current track fails to load or play
+//   onPlaying()                     called whenever playback actually starts
+//   onPrefetch(track)               called once per track with the track that will play next
+export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath, options = {}) {
+  const audioRef = useRef(null);
+  if (!audioRef.current) audioRef.current = new Audio();
+
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const tracksRef = useRef(tracks);
+  tracksRef.current = tracks;
   const playModeRef = useRef(playMode);
   playModeRef.current = playMode;
+
   const [trackIndex, setTrackIndex] = useState(0);
+  const trackIndexRef = useRef(0);
+  trackIndexRef.current = trackIndex;
 
   const prevTracksRef = useRef(tracks);
   if (prevTracksRef.current !== tracks) {
@@ -15,6 +28,7 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
   const [isPlaying, setIsPlaying] = useState(false);
   const isPlayingRef = useRef(false);
   isPlayingRef.current = isPlaying;
+  const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -28,6 +42,36 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
   const audio = audioRef.current;
   audio.volume = muted ? 0 : volume;
 
+  // The src we assigned most recently. Used to ignore the error the browser raises
+  // when we clear src, and stale errors from a track we already moved on from.
+  const currentSrcRef = useRef(null);
+  const prefetchedSrcRef = useRef(null);
+
+  // Index that plays after `from`. In shuffle mode the pick is remembered so that
+  // prefetching and the real "next" agree on the same song.
+  const plannedRef = useRef({ from: -1, to: -1 });
+  const computeNext = useCallback((from) => {
+    const len = tracksRef.current.length;
+    if (len === 0) return 0;
+    if (playModeRef.current === 'shuffle' && len > 1) {
+      if (plannedRef.current.from === from && plannedRef.current.to < len) {
+        return plannedRef.current.to;
+      }
+      let n;
+      do { n = Math.floor(Math.random() * len); } while (n === from);
+      plannedRef.current = { from, to: n };
+      return n;
+    }
+    return (from + 1) % len;
+  }, []);
+
+  const prefetchNext = useCallback(() => {
+    const list = tracksRef.current;
+    if (list.length < 2 || playModeRef.current === 'repeat') return;
+    const upcoming = list[computeNext(trackIndexRef.current)];
+    if (upcoming && optionsRef.current.onPrefetch) optionsRef.current.onPrefetch(upcoming);
+  }, [computeNext]);
+
   useEffect(() => {
     const t = tracks[trackIndex];
     // Allow either t.file (Electron) or t.url (Capacitor)
@@ -40,7 +84,7 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     (async () => {
       // Prioritize the pre-converted Capacitor URL if it exists
       let src = t.url || t.file;
-      
+
       // If it's a web stream, blob, or a native Android file path from Capacitor
       if (
         src.startsWith('http://') ||
@@ -60,7 +104,9 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
 
       if (cancelled || !src) return;
       audio.src = src;
+      currentSrcRef.current = audio.getAttribute('src');
       audio.load();
+      setLoading(true);
       setProgress(0);
       setCurrentTime(0);
       setDuration(0);
@@ -84,33 +130,55 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
       setDuration(audio.duration);
     };
 
+    const onCanPlay = () => setLoading(false);
+
+    const onPlayingEvent = () => {
+      setLoading(false);
+      if (optionsRef.current.onPlaying) optionsRef.current.onPlaying();
+      // Ask for the next track once this one is actually playing, so the
+      // prefetch never competes with the download the listener is waiting on.
+      if (prefetchedSrcRef.current !== currentSrcRef.current) {
+        prefetchedSrcRef.current = currentSrcRef.current;
+        prefetchNext();
+      }
+    };
+
+    const onErrorEvent = () => {
+      const attr = audio.getAttribute('src');
+      // Clearing src (audio.src = '') raises an error too; that one is not a failure.
+      if (!attr || attr !== currentSrcRef.current) return;
+      setLoading(false);
+      const failed = tracksRef.current[trackIndexRef.current];
+      if (optionsRef.current.onError) {
+        optionsRef.current.onError(failed, audio.error ? audio.error.code : 0);
+      }
+    };
+
     const onEnded = () => {
       if (playModeRef.current === 'repeat') {
         audio.currentTime = 0;
         audio.play().catch(() => {});
         return;
       }
-      setTrackIndex((prev) => {
-        if (tracks.length === 0) return 0;
-        if (playModeRef.current === 'shuffle') {
-          let next;
-          do { next = Math.floor(Math.random() * tracks.length); } while (next === prev && tracks.length > 1);
-          return next;
-        }
-        return (prev + 1) % tracks.length;
-      });
+      setTrackIndex((prev) => computeNext(prev));
     };
 
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('canplay', onCanPlay);
+    audio.addEventListener('playing', onPlayingEvent);
+    audio.addEventListener('error', onErrorEvent);
     audio.addEventListener('ended', onEnded);
 
     return () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('canplay', onCanPlay);
+      audio.removeEventListener('playing', onPlayingEvent);
+      audio.removeEventListener('error', onErrorEvent);
       audio.removeEventListener('ended', onEnded);
     };
-  }, [tracks]);
+  }, [tracks, computeNext, prefetchNext]);
 
   const play = useCallback(() => {
     audio.play().catch(() => {});
@@ -128,16 +196,8 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
   }, [isPlaying, play, pause]);
 
   const next = useCallback(() => {
-    setTrackIndex((prev) => {
-      if (tracks.length === 0) return 0;
-      if (playModeRef.current === 'shuffle' && tracks.length > 1) {
-        let n;
-        do { n = Math.floor(Math.random() * tracks.length); } while (n === prev);
-        return n;
-      }
-      return (prev + 1) % tracks.length;
-    });
-  }, [tracks]);
+    setTrackIndex((prev) => computeNext(prev));
+  }, [computeNext]);
 
   const prev = useCallback(() => {
     if (audio.currentTime > 3) {
@@ -180,9 +240,12 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     track,
     trackIndex,
     isPlaying,
+    loading,
     progress,
     duration,
     currentTime,
+    play,
+    pause,
     togglePlay,
     next,
     prev,
