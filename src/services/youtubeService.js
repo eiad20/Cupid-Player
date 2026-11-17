@@ -82,3 +82,67 @@ export async function diagnoseStream(videoId) {
     return 'timeout';
   }
 }
+
+// ── Added: status panel, search paging, single video lookup ──
+
+// Status panel: quick info from the server. Returns null if it cannot be reached
+// (a timeout, an ISP redirect page or any non-JSON answer all count as unreachable).
+export async function fetchServerStatus(timeoutMs = 6000) {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/status`, { cache: 'no-store' }, timeoutMs);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data && data.ok ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+// "Check now": the server runs a quick real yt-dlp test (takes a few seconds).
+export async function runServerCheck(timeoutMs = 60000) {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/status/check`, { method: 'POST', cache: 'no-store' }, timeoutMs);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data && data.ok ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+// Search with paging. offset 0 = first page; pass nextOffset back in for "more results".
+// Returns { tracks, nextOffset, hasMore }.
+export async function searchYouTubeMore(query, offset = 0) {
+  let res;
+  try {
+    res = await fetchWithTimeout(
+      `${API_BASE}/youtube/search?q=${encodeURIComponent(query)}&offset=${offset}`,
+      {},
+      60000,
+    );
+  } catch (err) {
+    throw new Error(err && err.name === 'AbortError' ? 'search timed out' : "can't reach the server");
+  }
+  let data = null;
+  try { data = await res.json(); } catch { /* not JSON */ }
+  if (!res.ok || !data) throw new Error((data && data.error) || 'search failed');
+  return {
+    tracks: data.tracks || [],
+    nextOffset: typeof data.nextOffset === 'number' ? data.nextOffset : offset + 12,
+    hasMore: !!data.hasMore,
+  };
+}
+
+// A single pasted video link. Returns { videoId, title, artist, duration, art }.
+export async function fetchYouTubeVideo(id) {
+  let res;
+  try {
+    res = await fetchWithTimeout(`${API_BASE}/youtube/video?id=${encodeURIComponent(id)}`, {}, 30000);
+  } catch (err) {
+    throw new Error(err && err.name === 'AbortError' ? 'timed out loading that video' : "can't reach the server");
+  }
+  let data = null;
+  try { data = await res.json(); } catch { /* not JSON */ }
+  if (!res.ok || !data) throw new Error((data && data.error) || 'could not load that video');
+  return data;
+}

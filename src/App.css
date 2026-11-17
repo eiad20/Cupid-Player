@@ -794,7 +794,7 @@
 
 /* Rest the plant on the window sill */
 .player.mobile-layout .plant-image {
-  transform: translateY(calc(35 * var(--u))); /* Decreased from 50 to pull it up */
+  transform: translateY(calc(25 * var(--u))); /* Decreased from 50 to pull it up */
 }
 
 /* ── Decorative Cat (Pink Theme Default) ───────────────────────── */
@@ -1009,32 +1009,94 @@
   color: var(--color-panel-text);
 }
 
-/* Added: server status dot (green = online, red = offline, yellow = checking) */
-.server-dot {
-  position: absolute;
-  left: calc(10 * var(--u));
-  bottom: calc(10 * var(--u));
-  width: calc(7 * var(--u));
-  height: calc(7 * var(--u));
-  min-width: 8px;
-  min-height: 8px;
-  border: calc(1 * var(--u)) solid #1a1a1a;
-  box-shadow: calc(1 * var(--u)) calc(1 * var(--u)) 0 rgba(0, 0, 0, 0.35);
-  background: #e0b020;
-  image-rendering: pixelated;
-  pointer-events: none;
-  z-index: 50;
+/* Added: "status:" row in settings, the status panel, and "more results" in the queue */
+.settings-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  font-family: 'Rainyhearts', monospace;
+  font-size: calc(10 * var(--u));
+  background: none;
+  border: calc(1 * var(--u)) solid var(--color-panel-text);
+  border-radius: calc(2 * var(--u));
+  color: var(--color-panel-text);
+  padding: calc(3 * var(--u)) calc(6 * var(--u));
+  cursor: pointer;
+  text-align: left;
 }
 
-.server-dot.online {
-  background: #3ddc6c;
+.settings-status-row:hover {
+  background: var(--color-panel-text);
+  color: var(--color-primary);
 }
 
-.server-dot.offline {
-  background: #e8434f;
-  animation: server-dot-blink 1s steps(2) infinite;
+.settings-status-row:hover .settings-status-value {
+  color: inherit;
 }
 
-@keyframes server-dot-blink {
-  50% { opacity: 0.35; }
+.settings-status-value.good,
+.status-headline.good,
+.status-note.good {
+  color: #7be08f;
+}
+
+.settings-status-value.offline,
+.settings-status-value.cookies,
+.status-headline.offline,
+.status-headline.cookies,
+.status-note.bad {
+  color: #ff6b6b;
+}
+
+.settings-status-value.problem,
+.status-headline.problem {
+  color: #f0c040;
+}
+
+.settings-status-value.checking,
+.status-headline.checking {
+  opacity: 0.6;
+}
+
+.status-headline {
+  font-family: 'Rainyhearts', monospace;
+  font-size: calc(10 * var(--u));
+  line-height: 1.3;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: calc(6 * var(--u));
+  font-family: 'Rainyhearts', monospace;
+  font-size: calc(10 * var(--u));
+  color: var(--color-panel-text);
+}
+
+.status-row span:last-child {
+  text-align: right;
+  opacity: 0.85;
+}
+
+.status-note {
+  font-family: 'Rainyhearts', monospace;
+  font-size: calc(9 * var(--u));
+}
+
+.tracklist-more {
+  flex-shrink: 0;
+  font-family: 'Rainyhearts', monospace;
+  font-size: calc(10 * var(--u));
+  background: none;
+  border: calc(1 * var(--u)) solid var(--color-panel-text);
+  border-radius: calc(2 * var(--u));
+  color: var(--color-panel-text);
+  padding: calc(3 * var(--u)) calc(6 * var(--u));
+  margin: calc(4 * var(--u)) 0;
+  cursor: pointer;
+}
+
+.tracklist-more:disabled {
+  opacity: 0.5;
 }

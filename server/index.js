@@ -45,7 +45,28 @@ const FAILURE_TTL_MS = 60 * 1000;
 const recentFailures = new Map(); // videoId -> { reason, message, at }
 function recordFailure(id, err) {
   if (recentFailures.size > 200) recentFailures.clear();
-  recentFailures.set(id, { reason: classifyFailure(err), message: err.message, at: Date.now() });
+  const reason = classifyFailure(err);
+  recentFailures.set(id, { reason, message: err.message, at: Date.now() });
+  noteFailure(reason);
+}
+
+// ── Status (what the app's Status panel shows) ───────────
+const status = {
+  lastOkAt: null,        // last time yt-dlp successfully got audio from YouTube
+  lastCookieFailAt: null,
+  lastFailure: null,     // { reason, at }
+  ytdlpVersion: null,
+  versionAt: 0,
+};
+const CHECK_VIDEO_ID = process.env.CHECK_VIDEO_ID || 'dQw4w9WgXcQ';
+const ago = (t) => (t ? Math.round((Date.now() - t) / 1000) : null);
+
+function noteSuccess() {
+  status.lastOkAt = Date.now();
+}
+function noteFailure(reason) {
+  status.lastFailure = { reason, at: Date.now() };
+  if (reason === 'cookies') status.lastCookieFailAt = Date.now();
 }
 
 // Runs yt-dlp without execFile's pipe-close wait. stdin is closed, the promise
@@ -166,6 +187,7 @@ function ensureAudio(id) {
     const size = fs.statSync(file).size; // throws if the file is missing
     console.log(`[cache] ${id} downloaded: ${(size / 1048576).toFixed(1)} MB in ${Date.now() - started}ms`);
     recentFailures.delete(id);
+    noteSuccess();
     return file;
   }).catch((err) => { recordFailure(id, err); throw err; }).finally(() => inflight.delete(id));
 
@@ -261,6 +283,7 @@ app.post('/api/youtube/playlist', async (req, res) => {
   } catch (err) {
     console.error(`=== YOUTUBE FETCH ERROR after ${Date.now() - started}ms ===`,
       err.timedOut ? 'TIMEOUT' : '', err.message, '\nSTDERR:', (err.stderr || '').slice(0, 1000));
+    noteFailure(classifyFailure(err));
     res.status(500).json({ error: err.message });
   }
 });
@@ -311,28 +334,122 @@ app.get('/api/health', (req, res) => {
   res.type('text').send('ok');
 });
 
+// ── Status panel data ────────────────────────────────────
+
+async function getYtDlpVersion() {
+  if (status.ytdlpVersion && Date.now() - status.versionAt < 60 * 60 * 1000) return status.ytdlpVersion;
+  try {
+    const { stdout } = await runYtDlp(['--version'], 10000);
+    status.ytdlpVersion = stdout.trim();
+    status.versionAt = Date.now();
+  } catch { /* keep the old value */ }
+  return status.ytdlpVersion;
+}
+
+// ok = a download worked after the last cookie failure; expired = the last cookie failure is newer.
+function cookieState() {
+  if (!hasCookies) return 'missing';
+  if (status.lastCookieFailAt && (!status.lastOkAt || status.lastCookieFailAt > status.lastOkAt)) return 'expired';
+  return status.lastOkAt ? 'ok' : 'unknown';
+}
+
+function cacheSummary() {
+  try {
+    const files = fs.readdirSync(CACHE_DIR).filter((n) => n.endsWith('.m4a'));
+    const bytes = files.reduce((n, f) => n + fs.statSync(path.join(CACHE_DIR, f)).size, 0);
+    return { files: files.length, mb: Math.round(bytes / 1048576) };
+  } catch {
+    return { files: 0, mb: 0 };
+  }
+}
+
+async function buildStatus() {
+  return {
+    ok: true,
+    cookies: cookieState(),
+    ytdlp: await getYtDlpVersion(),
+    lastOkAgo: ago(status.lastOkAt),
+    lastFailure: status.lastFailure ? { reason: status.lastFailure.reason, ago: ago(status.lastFailure.at) } : null,
+    cache: cacheSummary(),
+    uptime: Math.round(process.uptime()),
+  };
+}
+
+// 4b. Status for the app's Status panel (cheap: no YouTube request)
+app.get('/api/status', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await buildStatus());
+});
+
+// 4c. "Check now": a quick real yt-dlp run (extraction only, no download) so cookie
+// problems show up immediately instead of on the next song.
+let checkRunning = null;
+let lastCheck = { at: 0, result: null };
+app.post('/api/status/check', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  // Reuse a result from the last few seconds so repeated taps cannot hammer YouTube.
+  if (lastCheck.result && Date.now() - lastCheck.at < 10 * 1000) {
+    return res.json({ ...(await buildStatus()), check: lastCheck.result });
+  }
+  if (!checkRunning) {
+    checkRunning = (async () => {
+      const started = Date.now();
+      try {
+        await runYtDlp([
+          `https://www.youtube.com/watch?v=${CHECK_VIDEO_ID}`,
+          '--force-ipv4',
+          '--no-playlist',
+          '--no-warnings',
+          '-q',
+          '--simulate',
+          '--extractor-args', 'youtube:player_client=mweb',
+          ...(hasCookies ? ['--cookies', cookiesPath] : []),
+          '-f', 'bestaudio[ext=m4a]',
+        ], 45000);
+        noteSuccess();
+        console.log(`[check] passed in ${Date.now() - started}ms`);
+        return { ok: true, ms: Date.now() - started };
+      } catch (err) {
+        const reason = classifyFailure(err);
+        noteFailure(reason);
+        console.error('[check] failed:', reason, err.message);
+        return { ok: false, reason, ms: Date.now() - started };
+      }
+    })()
+      .then((r) => { lastCheck = { at: Date.now(), result: r }; return r; })
+      .finally(() => { checkRunning = null; });
+  }
+  const result = await checkRunning;
+  res.json({ ...(await buildStatus()), check: result });
+});
+
 // 5. Search YouTube (returns the same track shape as a playlist)
 app.get('/api/youtube/search', async (req, res) => {
   const q = String(req.query.q || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 100);
   if (!q) return res.status(400).json({ error: 'Query is required' });
 
+  const PAGE = 12;
+  const offset = Math.max(0, Math.min(48, parseInt(req.query.offset, 10) || 0));
+
   const started = Date.now();
   try {
     const { stdout } = await runYtDlp([
-      `ytsearch12:${q}`,
+      `ytsearch${offset + PAGE}:${q}`,
       '--force-ipv4',
       '--flat-playlist',
       '--dump-single-json',
       '--no-warnings',
       '--extractor-args', 'youtube:player_client=android,web',
       ...(hasCookies ? ['--cookies', cookiesPath] : []),
-    ], 25000);
+    ], 25000 + offset * 500);
 
     const data = JSON.parse(stdout);
-    const tracks = (data.entries || [])
+    // "more results" asks for a later page: fetch everything up to it and drop what the app already has
+    const raw = (data.entries || []).slice(offset);
+    const tracks = raw
       .filter((e) => e && e.id && YT_ID_RE.test(e.id))
       // skip hour-long mixes and live streams: they are huge downloads
-      .filter((e) => typeof e.duration !== 'number' || e.duration <= 1200)
+      .filter((e) => typeof e.duration !== 'number' || e.duration <= 2400)
       .map((e) => ({
         videoId: e.id,
         title: e.title || e.id,
@@ -341,12 +458,62 @@ app.get('/api/youtube/search', async (req, res) => {
         art: `https://i.ytimg.com/vi/${e.id}/hqdefault.jpg`,
       }));
 
-    console.log(`[search] "${q}" -> ${tracks.length} results in ${Date.now() - started}ms`);
-    res.json({ tracks });
+    const nextOffset = offset + PAGE;
+    const hasMore = raw.length >= PAGE && nextOffset < 60;
+    console.log(`[search] "${q}" offset ${offset} -> ${tracks.length} results in ${Date.now() - started}ms`);
+    res.json({ tracks, nextOffset, hasMore });
+
+    // Warm the cache for the top result so the first tap is quick.
+    if (offset === 0 && tracks[0]) ensureAudio(tracks[0].videoId).catch(() => {});
   } catch (err) {
+    noteFailure(classifyFailure(err));
     console.error(`=== YOUTUBE SEARCH ERROR for "${q}" ===`, err.timedOut ? 'TIMEOUT' : '', err.message,
       '\nSTDERR:', (err.stderr || '').slice(0, 1000));
     res.status(502).json({ error: err.message });
+  }
+});
+
+// 6. Title and uploader for a single pasted video link
+async function lookupVideo(id) {
+  const watchUrl = `https://www.youtube.com/watch?v=${id}`;
+  // oEmbed is quick and needs no cookies; some videos refuse it, so fall back to yt-dlp.
+  if (typeof fetch === 'function') {
+    try {
+      const r = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(watchUrl)}&format=json`,
+        { signal: AbortSignal.timeout(8000) });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && j.title) return { title: j.title, artist: j.author_name || 'Unknown Artist', duration: null };
+      }
+    } catch { /* fall through to yt-dlp */ }
+  }
+  const { stdout } = await runYtDlp([
+    watchUrl,
+    '--force-ipv4',
+    '--no-playlist',
+    '--dump-single-json',
+    '--no-warnings',
+    '--extractor-args', 'youtube:player_client=android,web',
+    ...(hasCookies ? ['--cookies', cookiesPath] : []),
+  ], 25000);
+  const d = JSON.parse(stdout);
+  return {
+    title: d.title || id,
+    artist: d.uploader || d.channel || 'Unknown Artist',
+    duration: typeof d.duration === 'number' ? d.duration : null,
+  };
+}
+
+app.get('/api/youtube/video', async (req, res) => {
+  const { id } = req.query;
+  if (!id || !YT_ID_RE.test(id)) return res.status(400).json({ error: 'invalid video link' });
+  try {
+    const info = await lookupVideo(id);
+    res.json({ videoId: id, ...info, art: `https://i.ytimg.com/vi/${id}/hqdefault.jpg` });
+    ensureAudio(id).catch(() => {}); // warm the cache: the listener will tap play next
+  } catch (err) {
+    console.error(`=== YOUTUBE VIDEO LOOKUP ERROR for ${id} ===`, err.message);
+    res.status(502).json({ error: 'could not load that video' });
   }
 });
 

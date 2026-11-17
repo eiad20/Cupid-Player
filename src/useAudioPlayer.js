@@ -19,10 +19,16 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
   const trackIndexRef = useRef(0);
   trackIndexRef.current = trackIndex;
 
+  // Identity of a track's audio, so we can tell "same list with more songs added"
+  // from "a different list was loaded".
+  const trackKey = (t) => (t ? (t.url || t.file || '') : '');
+
   const prevTracksRef = useRef(tracks);
   if (prevTracksRef.current !== tracks) {
+    const sameQueue = trackKey(prevTracksRef.current[0]) === trackKey(tracks[0]);
     prevTracksRef.current = tracks;
-    if (trackIndex >= tracks.length) setTrackIndex(0);
+    // A different list starts from its first song; adding results to the same list keeps the position.
+    if (trackIndex >= tracks.length || !sameQueue) setTrackIndex(0);
   }
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -44,6 +50,7 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
 
   // The src we assigned most recently. Used to ignore the error the browser raises
   // when we clear src, and stale errors from a track we already moved on from.
+  const currentTrackKey = trackKey(tracks[trackIndex]);
   const currentSrcRef = useRef(null);
   const prefetchedSrcRef = useRef(null);
 
@@ -116,7 +123,10 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     })();
 
     return () => { cancelled = true; };
-  }, [trackIndex, tracks, getAudioPath]);
+    // Depends on the current song, not the whole list, so appending "more results"
+    // does not restart what is playing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackIndex, currentTrackKey, getAudioPath]);
 
   useEffect(() => {
     const onTimeUpdate = () => {
@@ -233,8 +243,15 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
 
   const jumpTo = useCallback((index) => {
     if (index < 0 || index >= tracks.length) return;
-    setTrackIndex(index);
-  }, [tracks.length]);
+    // Tapping a song in the queue always starts it, even if playback was paused.
+    isPlayingRef.current = true;
+    setIsPlaying(true);
+    if (index === trackIndexRef.current) {
+      audio.play().catch(() => {});
+    } else {
+      setTrackIndex(index);
+    }
+  }, [tracks.length, audio]);
 
   return {
     track,

@@ -21,7 +21,8 @@ import {
 import {
   fetchYouTubePlaylist,
   getStreamUrlById,
-  searchYouTube,
+  searchYouTubeMore,
+  fetchYouTubeVideo,
   prefetchYouTubeTrack,
   diagnoseStream,
 } from './services/youtubeService.js';
@@ -230,9 +231,75 @@ const FAILURE_MESSAGES = {
   unknown: 'could not play this track, skipping',
 };
 
+// Same reasons without the "skipping" part, for the Status panel
+const reasonText = (reason) =>
+  reason === 'cookies'
+    ? 'cookies expired'
+    : (FAILURE_MESSAGES[reason] || FAILURE_MESSAGES.unknown).replace(', skipping', '');
+
+const STATUS_SHORT = { checking: '...', good: 'good', offline: 'offline', cookies: 'cookies expired', problem: 'problem' };
+const COOKIE_TEXT = { ok: 'ok', expired: 'expired', unknown: 'not tested yet', missing: 'no file' };
+
+function statusHeadline(summary, info) {
+  switch (summary) {
+    case 'good': return 'all good';
+    case 'offline': return "can't reach the server";
+    case 'cookies': return 'cookies expired. re-export cookies.txt on the server, then tap check now';
+    case 'problem': return `last download failed: ${reasonText(info.lastFailure.reason)}`;
+    default: return 'checking...';
+  }
+}
+
+function fmtAgo(seconds) {
+  if (seconds === null || seconds === undefined) return 'none yet';
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  return `${Math.floor(seconds / 86400)} d ago`;
+}
+
+// Adds the thumbnail and the playable url to a track from the server
+const prepareTrack = (t) => withStreamUrl({
+  ...t,
+  art: t.art || (t.videoId ? `https://i.ytimg.com/vi/${t.videoId}/mqdefault.jpg` : null),
+});
+
+// Recognises a pasted YouTube link. Returns { type: 'playlist', url } or { type: 'video', id } or null.
+function parseYouTubeLink(input) {
+  let u;
+  try { u = new URL(input.trim()); } catch { return null; }
+  const host = u.hostname.replace(/^(www|m|music)\./, '');
+  if (host !== 'youtube.com' && host !== 'youtu.be') return null;
+
+  let id = null;
+  if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
+  else if (u.pathname === '/watch') id = u.searchParams.get('v');
+  else {
+    const m = u.pathname.match(/^\/(?:shorts|embed|live)\/([^/?]+)/);
+    if (m) id = m[1];
+  }
+  if (id && !/^[A-Za-z0-9_-]{11}$/.test(id)) id = null;
+
+  const list = u.searchParams.get('list');
+  // Real playlists load as a playlist. "Mix" lists (RD...) never end, so a video link wins over those.
+  const realList = list && /^(PL|OLAK|UU|FL)[A-Za-z0-9_-]+$/.test(list);
+  if (list && (realList || !id) && /^[A-Za-z0-9_-]{10,64}$/.test(list)) {
+    return { type: 'playlist', url: `https://www.youtube.com/playlist?list=${list}` };
+  }
+  if (id) return { type: 'video', id };
+  return null;
+}
+
 export default function App() {
   const isNative = Capacitor.isNativePlatform();
-  const serverStatus = useServerStatus();
+  const {
+    info: statusInfo,
+    summary: statusSummary,
+    refresh: refreshStatus,
+    check: runStatusCheck,
+    checking: statusChecking,
+    checkResult,
+  } = useServerStatus();
 // Determine if the screen is a tall phone ratio (taller than ~16:10 / 5:3)
 const [isPhoneScreen, setIsPhoneScreen] = useState(() => {
   if (typeof window === 'undefined') return false;
@@ -271,6 +338,9 @@ const [frameIndex] = useState(() => Math.floor(Math.random() * pinkDesktopFrames
   const [searching, setSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const [searchMore, setSearchMore] = useState(null); // { q, offset } while "more results" is available
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [showStatus, setShowStatus] = useState(false);
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
   const failStreakRef = useRef(0);
@@ -422,23 +492,35 @@ const handleCatClick = (e) => {
     };
   }, [loading, source, track.title, showToast]);
 
-  // ── Search YouTube ─────────────────────────────────────
+  // ── Search YouTube (or open a pasted YouTube link) ─────
   const searchYoutubeTracks = useCallback(async (query) => {
     const q = query.trim();
     if (!q) return;
     setSearchError(null);
     setSearching(true);
     try {
-      const rawTracks = await searchYouTube(q);
-      if (rawTracks.length === 0) {
-        setSearchError('no results');
-        return;
+      const link = parseYouTubeLink(q);
+      let rawTracks;
+      let more = null;
+      if (link && link.type === 'playlist') {
+        rawTracks = await fetchYouTubePlaylist(link.url);
+        if (rawTracks.length === 0) {
+          setSearchError('playlist is empty or private');
+          return;
+        }
+      } else if (link) {
+        rawTracks = [await fetchYouTubeVideo(link.id)];
+      } else {
+        const page = await searchYouTubeMore(q, 0);
+        if (page.tracks.length === 0) {
+          setSearchError('no results');
+          return;
+        }
+        rawTracks = page.tracks;
+        if (page.hasMore) more = { q, offset: page.nextOffset };
       }
-      const tracks = rawTracks.map((t) => withStreamUrl({
-        ...t,
-        art: t.art || (t.videoId ? `https://i.ytimg.com/vi/${t.videoId}/mqdefault.jpg` : null),
-      }));
-      setStreamTracks(tracks);
+      setStreamTracks(rawTracks.map(prepareTrack));
+      setSearchMore(more);
       setSource('streaming');
       setSearchInput('');
       setShowSearch(false);
@@ -451,6 +533,24 @@ const handleCatClick = (e) => {
       setSearching(false);
     }
   }, []);
+
+  // "more results" button at the bottom of the queue
+  const loadMoreResults = useCallback(async () => {
+    if (!searchMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await searchYouTubeMore(searchMore.q, searchMore.offset);
+      setStreamTracks((cur) => {
+        const seen = new Set(cur.map((t) => t.videoId));
+        return [...cur, ...page.tracks.filter((t) => !seen.has(t.videoId)).map(prepareTrack)];
+      });
+      setSearchMore(page.hasMore ? { q: searchMore.q, offset: page.nextOffset } : null);
+    } catch (err) {
+      showToast(err.message || 'could not load more', 3000);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [searchMore, loadingMore, showToast]);
 
   const cyclePlayMode = useCallback(() => {
     setPlayMode((m) => m === 'normal' ? 'shuffle' : m === 'shuffle' ? 'repeat' : 'normal');
@@ -490,6 +590,7 @@ const handleCatClick = (e) => {
       setStreamTracks(tracks);
       setSource('streaming');
       setYoutubeUrlInput('');
+      setSearchMore(null);
     } catch (err) {
       setSettingsError(err.message);
     } finally {
@@ -519,6 +620,7 @@ const handleCatClick = (e) => {
         return;
       }
       setStreamTracks(tracks.map(withStreamUrl));
+      setSearchMore(null);
       setSource('streaming');
     } catch (err) {
       setSettingsError(err.message);
@@ -992,7 +1094,7 @@ const handleCatClick = (e) => {
         )}
 
         {/* Settings button */}
-        <div className="btn btn-settings" onClick={() => { setShowSettings((v) => !v); setShowSearch(false); }} />
+        <div className="btn btn-settings" onClick={() => { setShowSettings((v) => !v); setShowSearch(false); setShowStatus(false); if (!showSettings) refreshStatus(); }} />
 
         {/* Search button, right of settings (tablet/phone only: desktop has the window controls there) */}
         {isNative && (
@@ -1000,7 +1102,7 @@ const handleCatClick = (e) => {
             <div
               className="btn btn-search"
               title="search"
-              onClick={() => { setShowSearch((v) => !v); setShowSettings(false); }}
+              onClick={() => { setShowSearch((v) => !v); setShowSettings(false); setShowStatus(false); }}
             />
             <SearchIcon src={theme === 'blue' ? searchIconBlue : searchIconPink} />
           </>
@@ -1016,11 +1118,6 @@ const handleCatClick = (e) => {
         <div className="btn btn-tracklist" onClick={() => setShowTracklist((v) => !v)} />
 
        {toast && <div className="cupid-toast">{toast}</div>}
-
-        <div
-          className={`server-dot ${serverStatus}`}
-          title={`Server: ${serverStatus}`}
-        />
 
         {/* Tracklist Panel */}
         {showTracklist && (
@@ -1055,6 +1152,11 @@ const handleCatClick = (e) => {
                   );
                 })
               )}
+              {source === 'streaming' && searchMore && activeTracks.length > 0 && (
+                <button className="tracklist-more" onClick={loadMoreResults} disabled={loadingMore}>
+                  {loadingMore ? 'loading...' : 'more results'}
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1067,7 +1169,7 @@ const handleCatClick = (e) => {
               <input
                 className="settings-input"
                 type="text"
-                placeholder="song or artist"
+                placeholder="song, artist or link"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -1084,6 +1186,42 @@ const handleCatClick = (e) => {
                 {searching ? 'searching...' : 'search'}
               </button>
               {searchError && <div className="settings-error">{searchError}</div>}
+            </div>
+          </div>
+        )}
+
+        {/* Status Panel */}
+        {showStatus && (
+          <div className="settings-panel">
+            <div className="settings-panel-inner">
+              <div className="settings-label">status</div>
+              <div className={`status-headline ${statusSummary}`}>{statusHeadline(statusSummary, statusInfo)}</div>
+              {statusInfo && !statusInfo.unreachable && (
+                <>
+                  <div className="status-row"><span>cookies</span><span>{COOKIE_TEXT[statusInfo.cookies] || '?'}</span></div>
+                  <div className="status-row"><span>yt-dlp</span><span>{statusInfo.ytdlp || '?'}</span></div>
+                  <div className="status-row"><span>last download</span><span>{fmtAgo(statusInfo.lastOkAgo)}</span></div>
+                </>
+              )}
+              {checkResult && (
+                <div className={`status-note ${checkResult.ok ? 'good' : 'bad'}`}>
+                  {checkResult.ok
+                    ? `check passed (${(checkResult.ms / 1000).toFixed(1)}s)`
+                    : `check failed: ${reasonText(checkResult.reason)}`}
+                </div>
+              )}
+              <div className="settings-theme-row">
+                <button
+                  className={`settings-theme-btn ${statusChecking ? 'disabled' : ''}`}
+                  disabled={statusChecking}
+                  onClick={runStatusCheck}
+                >
+                  {statusChecking ? 'checking...' : 'check now'}
+                </button>
+                <button className="settings-theme-btn" onClick={() => setShowStatus(false)}>
+                  close
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1208,6 +1346,16 @@ const handleCatClick = (e) => {
                     </button>
                   </>
                 )
+              )}
+
+              {musicService === 'youtube' && (
+                <button
+                  className="settings-status-row"
+                  onClick={() => { setShowSettings(false); setShowStatus(true); refreshStatus(); }}
+                >
+                  <span>status:</span>
+                  <span className={`settings-status-value ${statusSummary}`}>{STATUS_SHORT[statusSummary]}</span>
+                </button>
               )}
 
               {settingsError && <div className="settings-error">{settingsError}</div>}
