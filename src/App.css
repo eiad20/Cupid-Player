@@ -389,9 +389,9 @@
 .progress-seek {
   position: absolute;
   left: calc((140 - 110) * var(--u));
-  top: calc((469 - 23) * var(--u));
+  top: calc((463 - 23) * var(--u)); /* Shifted up 6 units to center the taller hit box */
   width: calc(241 * var(--u));
-  height: calc(6 * var(--u));
+  height: calc(18 * var(--u));      /* Increased from 6 to 18 for easier finger grabbing */
   z-index: 150;
   cursor: pointer;
   -webkit-app-region: no-drag;

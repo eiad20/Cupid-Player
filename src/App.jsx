@@ -641,45 +641,73 @@ const handleCatClick = (e) => {
   const [dragging, setDragging] = useState(false);
   const [hoverProgress, setHoverProgress] = useState(null);
   const seekRef = useRef(null);
+  const dragPctRef = useRef(null);
 
   useEffect(() => {
     if (!dragging) return;
-    const onMouseMove = (e) => {
+
+    const onMove = (e) => {
+      if (!seekRef.current) return;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const rect = seekRef.current.getBoundingClientRect();
-      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       setHoverProgress(pct);
-      seek(pct);
+      dragPctRef.current = pct;
     };
-    const onMouseUp = () => {
+
+    const onEnd = () => {
       setDragging(false);
       setStarHovered(false);
+      if (dragPctRef.current !== null) {
+        seek(dragPctRef.current);
+      }
       setHoverProgress(null);
+      dragPctRef.current = null;
     };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchend', onEnd);
+    window.addEventListener('touchcancel', onEnd);
+
     return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', onEnd);
     };
   }, [dragging, seek]);
 
   useEffect(() => {
     if (!volumeDragging) return;
-    const onMouseMove = (e) => {
+
+    const onMove = (e) => {
       if (!volumeBarRef.current) return;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
       const rect = volumeBarRef.current.getBoundingClientRect();
-      const pct = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / rect.height));
+      const pct = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
       setVolume(pct);
     };
-    const onMouseUp = () => {
+
+    const onEnd = () => {
       setVolumeDragging(false);
       setVolumeHovered(false);
     };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchend', onEnd);
+    window.addEventListener('touchcancel', onEnd);
+
     return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', onEnd);
     };
   }, [volumeDragging, setVolume]);
 
@@ -1031,7 +1059,15 @@ const handleCatClick = (e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             setHoverProgress(pct);
-            seek(pct);
+            dragPctRef.current = pct;
+          }}
+          onTouchStart={(e) => {
+            setDragging(true);
+            setStarHovered(true);
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = Math.max(0, Math.min(1, (e.touches[0].clientX - rect.left) / rect.width));
+            setHoverProgress(pct);
+            dragPctRef.current = pct;
           }}
         />
 
@@ -1065,6 +1101,7 @@ const handleCatClick = (e) => {
             className="btn-volume-icon"
             onClick={toggleMute}
             onMouseEnter={() => setVolumeHovered(true)}
+            onTouchStart={() => setVolumeHovered(true)}
           />
           {(volumeHovered || volumeDragging) && (
             <div
@@ -1075,6 +1112,12 @@ const handleCatClick = (e) => {
                 setVolumeDragging(true);
                 const rect = e.currentTarget.getBoundingClientRect();
                 const pct = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / rect.height));
+                setVolume(pct);
+              }}
+              onTouchStart={(e) => {
+                setVolumeDragging(true);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pct = Math.max(0, Math.min(1, 1 - (e.touches[0].clientY - rect.top) / rect.height));
                 setVolume(pct);
               }}
             />
