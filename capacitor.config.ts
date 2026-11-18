@@ -8,6 +8,11 @@ const config: CapacitorConfig = {
     androidScheme: 'http',
     cleartext: true,
   },
+  plugins: {
+    MediaSession: {
+      foregroundService: 'always',
+    },
+  },
 };
 
 export default config;

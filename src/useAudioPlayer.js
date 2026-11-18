@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { MediaSession } from '@capgo/capacitor-media-session';
 
 // options (all optional):
 //   onError(track, mediaErrorCode)  called when the current track fails to load or play
@@ -6,7 +7,10 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 //   onPrefetch(track)               called once per track with the track that will play next
 export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath, options = {}) {
   const audioRef = useRef(null);
-  if (!audioRef.current) audioRef.current = new Audio();
+  if (!audioRef.current) {
+    audioRef.current = new Audio();
+    audioRef.current.preload = 'auto';
+  }
 
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -110,6 +114,17 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
       }
 
       if (cancelled || !src) return;
+
+      // Enable CORS for remote streams so Web Audio API AnalyserNode can read frequency data
+      if (
+        (src.startsWith('http://') || src.startsWith('https://')) &&
+        !src.includes('_capacitor_file_')
+      ) {
+        audio.crossOrigin = 'anonymous';
+      } else {
+        audio.removeAttribute('crossorigin');
+      }
+
       audio.src = src;
       currentSrcRef.current = audio.getAttribute('src');
       audio.load();
@@ -133,6 +148,13 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
       setCurrentTime(audio.currentTime);
       if (audio.duration) {
         setProgress(audio.currentTime / audio.duration);
+        if (isFinite(audio.duration) && audio.duration > 0) {
+          MediaSession.setPositionState({
+            duration: audio.duration,
+            playbackRate: audio.playbackRate || 1,
+            position: Math.min(audio.currentTime, audio.duration),
+          }).catch(() => {});
+        }
       }
     };
 
@@ -144,12 +166,21 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
 
     const onPlayingEvent = () => {
       setLoading(false);
+      setIsPlaying(true);
+      MediaSession.setPlaybackState({ playbackState: 'playing' }).catch(() => {});
       if (optionsRef.current.onPlaying) optionsRef.current.onPlaying();
       // Ask for the next track once this one is actually playing, so the
       // prefetch never competes with the download the listener is waiting on.
       if (prefetchedSrcRef.current !== currentSrcRef.current) {
         prefetchedSrcRef.current = currentSrcRef.current;
         prefetchNext();
+      }
+    };
+
+    const onPauseEvent = () => {
+      // Only mark paused if we didn't just reach the natural end of the track
+      if (!audio.ended && currentSrcRef.current) {
+        MediaSession.setPlaybackState({ playbackState: 'paused' }).catch(() => {});
       }
     };
 
@@ -177,6 +208,7 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('canplay', onCanPlay);
     audio.addEventListener('playing', onPlayingEvent);
+    audio.addEventListener('pause', onPauseEvent);
     audio.addEventListener('error', onErrorEvent);
     audio.addEventListener('ended', onEnded);
 
@@ -185,19 +217,22 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('canplay', onCanPlay);
       audio.removeEventListener('playing', onPlayingEvent);
+      audio.removeEventListener('pause', onPauseEvent);
       audio.removeEventListener('error', onErrorEvent);
       audio.removeEventListener('ended', onEnded);
     };
-  }, [tracks, computeNext, prefetchNext]);
+  }, [tracks, computeNext, prefetchNext, audio]);
 
   const play = useCallback(() => {
     audio.play().catch(() => {});
     setIsPlaying(true);
+    MediaSession.setPlaybackState({ playbackState: 'playing' }).catch(() => {});
   }, [audio]);
 
   const pause = useCallback(() => {
     audio.pause();
     setIsPlaying(false);
+    MediaSession.setPlaybackState({ playbackState: 'paused' }).catch(() => {});
   }, [audio]);
 
   const togglePlay = useCallback(() => {
@@ -206,6 +241,8 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
   }, [isPlaying, play, pause]);
 
   const next = useCallback(() => {
+    isPlayingRef.current = true;
+    setIsPlaying(true);
     setTrackIndex((prev) => computeNext(prev));
   }, [computeNext]);
 
@@ -213,12 +250,14 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     if (audio.currentTime > 3) {
       audio.currentTime = 0;
     } else {
+      isPlayingRef.current = true;
+      setIsPlaying(true);
       setTrackIndex((p) => {
         if (tracks.length === 0) return 0;
         return (p - 1 + tracks.length) % tracks.length;
       });
     }
-  }, [audio, tracks]);
+  }, [audio, tracks.length]);
 
   const seek = useCallback((fraction) => {
     if (audio.duration) {
@@ -253,6 +292,60 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     }
   }, [tracks.length, audio]);
 
+  // Publish track metadata (title, artist, artwork) to lock screen & notification shade
+  useEffect(() => {
+    if (!track || track.title === 'No track') {
+      MediaSession.setPlaybackState({ playbackState: 'none' }).catch(() => {});
+      return;
+    }
+    const artwork = track.art
+      ? [{ src: track.art, sizes: '512x512', type: 'image/jpeg' }]
+      : [];
+    MediaSession.setMetadata({
+      title: track.title || 'Unknown Title',
+      artist: track.artist || 'Cupid Player',
+      album: 'Cupid Player',
+      artwork,
+    }).catch(() => {});
+  }, [track.title, track.artist, track.art]);
+
+  // Register lock-screen / headset media button handlers
+  useEffect(() => {
+    MediaSession.setActionHandler({ action: 'play' }, () => {
+      play();
+    }).catch(() => {});
+
+    MediaSession.setActionHandler({ action: 'pause' }, () => {
+      pause();
+    }).catch(() => {});
+
+    MediaSession.setActionHandler({ action: 'previoustrack' }, () => {
+      prev();
+    }).catch(() => {});
+
+    MediaSession.setActionHandler({ action: 'nexttrack' }, () => {
+      next();
+    }).catch(() => {});
+
+    MediaSession.setActionHandler({ action: 'seekto' }, (details) => {
+      if (details && typeof details.seekTime === 'number' && audio.duration) {
+        audio.currentTime = Math.max(0, Math.min(audio.duration, details.seekTime));
+      }
+    }).catch(() => {});
+
+    MediaSession.setActionHandler({ action: 'seekbackward' }, (details) => {
+      const offset = (details && details.seekOffset) || 10;
+      audio.currentTime = Math.max(0, audio.currentTime - offset);
+    }).catch(() => {});
+
+    MediaSession.setActionHandler({ action: 'seekforward' }, (details) => {
+      const offset = (details && details.seekOffset) || 10;
+      if (audio.duration) {
+        audio.currentTime = Math.min(audio.duration, audio.currentTime + offset);
+      }
+    }).catch(() => {});
+  }, [play, pause, prev, next, audio]);
+
   return {
     track,
     trackIndex,
@@ -272,5 +365,6 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     muted,
     toggleMute,
     jumpTo,
+    audioRef,
   };
 }

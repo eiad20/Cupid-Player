@@ -1100,3 +1100,33 @@
 .tracklist-more:disabled {
   opacity: 0.5;
 }
+
+.window-visualizer {
+  position: absolute;
+  /* 1. MOVE LEFT/RIGHT: Increase to move right (e.g., 52%, 55%) */
+  left: 70%; 
+  /* 2. MOVE UP/DOWN: Adjust the number 114 */
+  top: calc(110 * var(--u));
+  width: calc(120 * var(--u));
+  height: calc(34 * var(--u));
+  /* 3. ROTATE: Change -3deg to tilt it. Positive = clockwise, Negative = counter-clockwise */
+  transform: translateX(-50%) rotate(4deg);
+  
+  image-rendering: pixelated;
+  pointer-events: none;
+  user-select: none;
+  z-index: 4;
+}
+
+/* 4. MOBILE OVERRIDE */
+.player.mobile-layout .window-visualizer {
+  left: 73%; 
+  /* Increased from 160 to push it down. Adjust to 195 or 200 if still too high */
+  top: calc(195 * var(--u)); 
+  
+  /* Shrunk the width box since we only have 12 bars now */
+  width: calc(125 * var(--u)); 
+  height: calc(38 * var(--u));
+  transform: translateX(-50%) rotate(6deg); 
+  z-index: 4;
+}

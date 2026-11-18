@@ -44,6 +44,121 @@ import frameMobile4 from '../assets/pink/frame_mobile_4.png';*/
 
 const pinkDesktopFrames = [frame1];
 const pinkMobileFrames = [frameMobile1];
+
+// Singleton cache so we only ever call createMediaElementSource once per <audio> element
+const audioGraphMap = new WeakMap();
+
+function WindowVisualizer({ audioRef, isPlaying, theme, enabled, isMobile }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const canvas = canvasRef.current;
+    const audio = audioRef?.current;
+    if (!canvas || !audio) return undefined;
+
+    let graph = audioGraphMap.get(audio);
+    if (!graph && isPlaying) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 64;
+        analyser.smoothingTimeConstant = 0.78;
+        const source = ctx.createMediaElementSource(audio);
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        graph = { ctx, analyser };
+        audioGraphMap.set(audio, graph);
+      } catch {
+        // Fallback if browser/OS restricts Web Audio graph creation
+      }
+    }
+
+    if (graph && graph.ctx.state === 'suspended' && isPlaying) {
+      graph.ctx.resume().catch(() => {});
+    }
+
+    const ctx2d = canvas.getContext('2d');
+    const BARS = 16;
+    const MAX_BLOCKS = 8;
+    const dataArray = new Uint8Array(graph ? graph.analyser.frequencyBinCount : 32);
+    const smoothHeights = new Float32Array(BARS);
+    let rafId;
+
+    const render = (now) => {
+      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+
+      let hasSignal = false;
+      if (graph && isPlaying) {
+        graph.analyser.getByteFrequencyData(dataArray);
+        for (let i = 0; i < BARS; i += 1) {
+          if (dataArray[i] > 2) {
+            hasSignal = true;
+            break;
+          }
+        }
+      }
+
+      const topColor = theme === 'blue' ? 'rgba(200, 211, 246, 0.85)' : 'rgba(255, 232, 226, 0.88)';
+      const bodyColor = theme === 'blue' ? 'rgba(130, 195, 220, 0.52)' : 'rgba(246, 207, 200, 0.55)';
+
+      const barStep = 4; // 3px bar + 1px gap
+      const barWidth = 3;
+      const blockHeight = 2;
+      const blockGap = 1;
+      
+      // Centers the 14 bars inside the 64px canvas
+      const startX = (canvas.width - (BARS * barStep)) / 2; 
+
+      for (let i = 0; i < BARS; i += 1) {
+        let targetBlocks = 1;
+        if (isPlaying) {
+          if (hasSignal) {
+            const bin = Math.min(dataArray.length - 1, Math.floor((i / BARS) * 18) + 1);
+            const val = dataArray[bin] / 255;
+            targetBlocks = Math.max(1, Math.min(MAX_BLOCKS, Math.round(val * MAX_BLOCKS)));
+          } else {
+            const wave =
+              Math.sin(now * 0.007 + i * 0.65) * 0.5 +
+              Math.cos(now * 0.011 - i * 0.4) * 0.5;
+            targetBlocks = Math.max(1, Math.min(MAX_BLOCKS - 2, Math.round((wave + 1) * 2.5) + 1));
+          }
+        }
+
+        smoothHeights[i] += (targetBlocks - smoothHeights[i]) * 0.28;
+        const blocks = Math.max(1, Math.round(smoothHeights[i]));
+        const x = i * barStep; // Changed back to start from 0
+
+        for (let b = 0; b < blocks; b += 1) {
+          const y = canvas.height - (b + 1) * (blockHeight + blockGap);
+          ctx2d.fillStyle = b === blocks - 1 && blocks > 1 ? topColor : bodyColor;
+          ctx2d.fillRect(x, y, barWidth, blockHeight);
+        }
+      }
+
+      if (isPlaying) {
+        rafId = requestAnimationFrame(render);
+      }
+    };
+
+    rafId = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(rafId);
+  }, [audioRef, isPlaying, theme, enabled, isMobile]);
+
+  if (!enabled) return null;
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={64}
+      height={24}
+      className="window-visualizer"
+      aria-hidden="true"
+    />
+  );
+}
+
 function useResize(corner) {
   const onMouseDown = useCallback((e) => {
     e.preventDefault();
@@ -323,6 +438,24 @@ const isMobile = isNative && isPhoneScreen;
 // Select a random frame index (0 to 3) once when the app first loads
 const [frameIndex] = useState(() => Math.floor(Math.random() * pinkDesktopFrames.length));
 
+  // ── Visualizer state ─────────────────────────────────────
+  const [visualizerEnabled, setVisualizerEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('cupid-visualizer') !== 'off';
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleVisualizer = useCallback((enable) => {
+    setVisualizerEnabled(enable);
+    try {
+      localStorage.setItem('cupid-visualizer', enable ? 'on' : 'off');
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // ── Source state ─────────────────────────────────────────
   const [source, setSource] = useState('local'); // 'local' | 'streaming'
   const [youtubeConnected, setYoutubeConnected] = useState(isYouTubeLoggedIn());
@@ -479,6 +612,7 @@ const handleCatClick = (e) => {
     jumpTo,
     loading,
     pause,
+    audioRef,
   } = player;
   playerApiRef.current = { next, pause };
 
@@ -806,6 +940,15 @@ const handleCatClick = (e) => {
         {theme === 'pink' && (
           <div className={`layer lighting-overlay light-effect-${frameIndex + 1}`} />
         )}
+
+        {/* Window Pane Pixel Equalizer */}
+        <WindowVisualizer
+          audioRef={audioRef}
+          isPlaying={isPlaying}
+          theme={theme}
+          enabled={visualizerEnabled}
+          isMobile={isMobile}
+        />
 
        {/* Window title (hidden on native mobile/tablet devices) */}
        {!isNative && <div className="window-title">cupid player</div>}
@@ -1288,6 +1431,23 @@ const handleCatClick = (e) => {
                   blue
                 </button>
               </div>
+
+              <div className="settings-label">visualizer</div>
+              <div className="settings-theme-row">
+                <button
+                  className={`settings-theme-btn ${visualizerEnabled ? 'active' : ''}`}
+                  onClick={() => toggleVisualizer(true)}
+                >
+                  on
+                </button>
+                <button
+                  className={`settings-theme-btn ${!visualizerEnabled ? 'active' : ''}`}
+                  onClick={() => toggleVisualizer(false)}
+                >
+                  off
+                </button>
+              </div>
+
               <div className="settings-label">music</div>
               <SettingsDropdown
                 value={musicService}
