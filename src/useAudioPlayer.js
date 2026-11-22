@@ -292,6 +292,12 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     }
   }, [tracks.length, audio]);
 
+  // Picks a song without starting it (used to restore the last song on launch).
+  const selectTrack = useCallback((index) => {
+    if (index < 0 || index >= tracksRef.current.length) return;
+    setTrackIndex(index);
+  }, []);
+
   // Publish track metadata (title, artist, artwork) to lock screen & notification shade
   useEffect(() => {
     if (!track || track.title === 'No track') {
@@ -365,6 +371,7 @@ export default function useAudioPlayer(tracks, playMode = 'normal', getAudioPath
     muted,
     toggleMute,
     jumpTo,
+    selectTrack,
     audioRef,
   };
 }

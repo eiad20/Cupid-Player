@@ -920,12 +920,6 @@
   top: 52%; /* Slight lift up to center directly over the dial dot */
 }
 
-/* Optional mobile layout position offset */
-.player.mobile-layout .wall-clock {
-  top: calc(90 * var(--u));
-  left: calc(60 * var(--u));
-}
-
 /* Mobile layout clock position & size */
 .player.mobile-layout .wall-clock {
   top: calc(110 * var(--u));  /* Pushes clock down for taller phone screen */

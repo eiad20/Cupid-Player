@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import useServerStatus from './services/useServerStatus';
 import './App.css';
 import useAudioPlayer from './useAudioPlayer';
+import { saveLastTrack, loadLastTrack } from './lastTrack';
 
 import useTheme from './useTheme';
 import {
@@ -477,6 +478,8 @@ const [frameIndex] = useState(() => Math.floor(Math.random() * pinkDesktopFrames
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
   const failStreakRef = useRef(0);
+  const restoredRef = useRef(null);       // videoId restored at launch, until something plays
+  const localRestoredRef = useRef(false); // local restore runs once
   const playerApiRef = useRef({});
   const [musicService, setMusicService] = useState(() => {
   try {
@@ -564,6 +567,13 @@ const handleCatClick = (e) => {
   }, []);
 
   const handleTrackError = useCallback(async (failedTrack) => {
+    // The remembered song could not load at launch (offline, removed...). Drop it quietly.
+    if (restoredRef.current && failedTrack && failedTrack.videoId === restoredRef.current) {
+      restoredRef.current = null;
+      setStreamTracks([]);
+      setSource('local');
+      return;
+    }
     const { next: skipNext, pause: stopPlayback } = playerApiRef.current;
     failStreakRef.current += 1;
 
@@ -591,7 +601,11 @@ const handleCatClick = (e) => {
 
   const player = useAudioPlayer(activeTracks, playMode, resolveLocalPath, {
     onError: handleTrackError,
-    onPlaying: () => { failStreakRef.current = 0; },
+    onPlaying: () => {
+      failStreakRef.current = 0;
+      restoredRef.current = null;
+      saveLastTrack(playerApiRef.current.track);
+    },
     onPrefetch: (t) => { if (t && t.videoId) prefetchYouTubeTrack(t.videoId); },
   });
 
@@ -613,18 +627,41 @@ const handleCatClick = (e) => {
     loading,
     pause,
     audioRef,
+    selectTrack,
   } = player;
-  playerApiRef.current = { next, pause };
+  playerApiRef.current = { next, pause, track, selectTrack };
+
+  // ── Restore the last song (paused, from 0:00) ──────────
+  useEffect(() => {
+    const saved = loadLastTrack();
+    if (!saved || !saved.videoId) return;
+    restoredRef.current = saved.videoId;
+    setStreamTracks([prepareTrack(saved)]);
+    setSource('streaming');
+    setMusicService('youtube');
+  }, []);
+
+  // Electron: pick the saved local file once the playlist has loaded
+  useEffect(() => {
+    if (localRestoredRef.current || localTracks.length === 0) return;
+    localRestoredRef.current = true;
+    const saved = loadLastTrack();
+    if (!saved || !saved.file || source !== 'local') return;
+    const idx = localTracks.findIndex((t) => t.file === saved.file);
+    if (idx >= 0) selectTrack(idx);
+  }, [localTracks, source, selectTrack]);
 
   // "fetching track..." bubble while the server downloads a track for the first time
   useEffect(() => {
     if (!loading || source !== 'streaming') return undefined;
+    // Restored at launch and still paused: load quietly, no bubble
+    if (!isPlaying && restoredRef.current && track.videoId === restoredRef.current) return undefined;
     const timer = setTimeout(() => showToast('fetching track...', 0), 1500);
     return () => {
       clearTimeout(timer);
       setToast((cur) => (cur === 'fetching track...' ? null : cur));
     };
-  }, [loading, source, track.title, showToast]);
+  }, [loading, source, track.title, isPlaying, showToast]);
 
   // ── Search YouTube (or open a pasted YouTube link) ─────
   const searchYoutubeTracks = useCallback(async (query) => {
@@ -739,16 +776,11 @@ const handleCatClick = (e) => {
 }, [loadYoutubePlaylists]);
 
   // ── Load a playlist by ID ──────────────────────────────
-  const loadPlaylist = useCallback(async (id, service) => {
+  const loadPlaylist = useCallback(async (id) => {
     setLoadingPlaylist(true);
     setSettingsError(null);
     try {
-      const fetcher = service === 'apple'
-        ? fetchAppleTracks
-        : service === 'youtube'
-          ? fetchYouTubeTracks
-          : fetchSpotifyTracks;
-      const tracks = await fetcher(id);
+      const tracks = await fetchYouTubeTracks(id);
       if (tracks.length === 0) {
         setSettingsError('Playlist is empty');
         return;
@@ -1504,7 +1536,7 @@ const handleCatClick = (e) => {
                         loading={loadingPlaylists}
                         playlists={youtubePlaylists}
                         loadingPlaylist={loadingPlaylist}
-                        onSelect={(id) => loadPlaylist(id, 'youtube')}
+                        onSelect={(id) => loadPlaylist(id)}
                       />
                       <div className="settings-theme-row">
                         <button
