@@ -50,13 +50,21 @@ import sceneMountainsPhone from '../assets/pink/scenes/mountains_phone.png';
 import sceneGardenTablet from '../assets/pink/scenes/garden_tablet.png';
 import sceneCoastTablet from '../assets/pink/scenes/coast_tablet.png';
 import sceneMountainsTablet from '../assets/pink/scenes/mountains_tablet.png';
-import sceneRooftopSunsetPhone from '../assets/pink/scenes/rooftop_sunset_phone.png';
-import sceneCityDayPhone from '../assets/pink/scenes/city_day_phone.png';
-import sceneRooftopSunsetTablet from '../assets/pink/scenes/rooftop_sunset_tablet.png';
-import sceneCityDayTablet from '../assets/pink/scenes/city_day_tablet.png';
+import sceneCitySunsetCatPhone from '../assets/pink/scenes/city_sunset_cat_phone.png';
+import sceneCitySunsetCatTablet from '../assets/pink/scenes/city_sunset_cat_tablet.png';
+import sceneLakeCrescentDuskPhone from '../assets/pink/scenes/lake_crescent_dusk_phone.png';
+import sceneLakeCrescentDuskTablet from '../assets/pink/scenes/lake_crescent_dusk_tablet.png';
+import sceneMoonlitSeaPhone from '../assets/pink/scenes/moonlit_sea_phone.gif';
+import sceneMoonlitSeaTablet from '../assets/pink/scenes/moonlit_sea_tablet.gif';
+import sceneCrescentBeachPhone from '../assets/pink/scenes/crescent_beach_phone.png';
+import sceneCrescentBeachTablet from '../assets/pink/scenes/crescent_beach_tablet.png';
+import sceneCampfireForestPhone from '../assets/pink/scenes/campfire_forest_phone.gif';
+import sceneCampfireForestTablet from '../assets/pink/scenes/campfire_forest_tablet.gif';
 const pinkWindowScenes = {
-  phone: [sceneGardenPhone, sceneCoastPhone, sceneMountainsPhone, sceneRooftopSunsetPhone, sceneCityDayPhone],
-  tablet: [sceneGardenTablet, sceneCoastTablet, sceneMountainsTablet, sceneRooftopSunsetTablet, sceneCityDayTablet],
+  phone: [sceneGardenPhone, sceneCoastPhone, sceneMountainsPhone,
+    sceneCitySunsetCatPhone, sceneLakeCrescentDuskPhone, sceneMoonlitSeaPhone, sceneCrescentBeachPhone, sceneCampfireForestPhone],
+  tablet: [sceneGardenTablet, sceneCoastTablet, sceneMountainsTablet,
+    sceneCitySunsetCatTablet, sceneLakeCrescentDuskTablet, sceneMoonlitSeaTablet, sceneCrescentBeachTablet, sceneCampfireForestTablet],
 };
 
 // Singleton cache so we only ever call createMediaElementSource once per <audio> element
@@ -1089,8 +1097,8 @@ const handleCatClick = (e) => {
                   transform: `translate(-23.8%, -50%) rotate(${clockAngles.hour - 90}deg)`
                 } : {
                   /* Pink hour hand */
-                  transformOrigin: '15% 50%',
-                  transform: `translate(-15%, -50%) rotate(${clockAngles.hour - 90}deg)`
+                  transformOrigin: '17.39% 45%',
+                  transform: `translate(-17.39%, -45%) rotate(${clockAngles.hour - 90}deg)`
                 }}
               />
             )}
@@ -1108,8 +1116,8 @@ const handleCatClick = (e) => {
                   transform: `translate(-48%, -66%) rotate(${clockAngles.minute}deg)`
                 } : {
                   /* Pink minute hand */
-                  transformOrigin: '12% 50%',
-                  transform: `translate(-12%, -50%) rotate(${clockAngles.minute - 90}deg)`
+                  transformOrigin: '17.39% 41.12%',
+                  transform: `translate(-17.39%, -41.12%) rotate(${clockAngles.minute - 90}deg)`
                 }}
               />
             )}
@@ -1122,8 +1130,8 @@ const handleCatClick = (e) => {
                 alt=""
                 draggable={false}
                 style={{
-                  transformOrigin: '10% 50%',
-                  transform: `translate(-10%, -50%) rotate(${clockAngles.second - 90}deg)`
+                  transformOrigin: '17.17% 50%',
+                  transform: `translate(-17.17%, -50%) rotate(${clockAngles.second - 90}deg)`
                 }}
               />
             )}
