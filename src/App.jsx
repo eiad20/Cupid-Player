@@ -35,13 +35,7 @@ import starSelected from '../assets/star_selected.png';
 import searchIconPink from '../assets/pink/search.png';
 import searchIconBlue from '../assets/blue/search.png';
 import frame1 from '../assets/pink/frame.png';
-/*import frame2 from '../assets/pink/frame_2.png';
-import frame3 from '../assets/pink/frame_3.png';
-import frame4 from '../assets/pink/frame_4.png';*/
 import frameMobile1 from '../assets/pink/frame_mobile.png';
-/*import frameMobile2 from '../assets/pink/frame_mobile_2.png';
-import frameMobile3 from '../assets/pink/frame_mobile_3.png';
-import frameMobile4 from '../assets/pink/frame_mobile_4.png';*/
 
 const pinkDesktopFrames = [frame1];
 const pinkMobileFrames = [frameMobile1];
