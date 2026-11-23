@@ -46,6 +46,25 @@ import frameMobile4 from '../assets/pink/frame_mobile_4.png';*/
 const pinkDesktopFrames = [frame1];
 const pinkMobileFrames = [frameMobile1];
 
+// Static window scenes: fixed original frame with transparent pane cutouts
+// on top, swappable scene layer behind (clipped to the window region).
+import frameMobileCutout from '../assets/pink/frame_mobile_cutout.png';
+import frameTabletCutout from '../assets/pink/frame_tablet_cutout.png';
+import sceneGardenPhone from '../assets/pink/scenes/garden_phone.png';
+import sceneCoastPhone from '../assets/pink/scenes/coast_phone.png';
+import sceneMountainsPhone from '../assets/pink/scenes/mountains_phone.png';
+import sceneGardenTablet from '../assets/pink/scenes/garden_tablet.png';
+import sceneCoastTablet from '../assets/pink/scenes/coast_tablet.png';
+import sceneMountainsTablet from '../assets/pink/scenes/mountains_tablet.png';
+import sceneRooftopSunsetPhone from '../assets/pink/scenes/rooftop_sunset_phone.png';
+import sceneCityDayPhone from '../assets/pink/scenes/city_day_phone.png';
+import sceneRooftopSunsetTablet from '../assets/pink/scenes/rooftop_sunset_tablet.png';
+import sceneCityDayTablet from '../assets/pink/scenes/city_day_tablet.png';
+const pinkWindowScenes = {
+  phone: [sceneGardenPhone, sceneCoastPhone, sceneMountainsPhone, sceneRooftopSunsetPhone, sceneCityDayPhone],
+  tablet: [sceneGardenTablet, sceneCoastTablet, sceneMountainsTablet, sceneRooftopSunsetTablet, sceneCityDayTablet],
+};
+
 // Singleton cache so we only ever call createMediaElementSource once per <audio> element
 const audioGraphMap = new WeakMap();
 
@@ -436,8 +455,29 @@ useEffect(() => {
 
 // Only activate the tall layout on phones, not tablets
 const isMobile = isNative && isPhoneScreen;
+// Native tablet: desktop-style layout, but we may still swap its window scene
+const isTablet = isNative && !isPhoneScreen;
 // Select a random frame index (0 to 3) once when the app first loads
 const [frameIndex] = useState(() => Math.floor(Math.random() * pinkDesktopFrames.length));
+
+  // ── Window scene (pink theme, native phone/tablet) ──────
+  // Tap the window to cycle through the active device scene list.
+  const activeWindowScenes = isMobile
+    ? pinkWindowScenes.phone
+    : pinkWindowScenes.tablet;
+  const [sceneIndex, setSceneIndex] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem('cupid-window-scene') || '0');
+      return Number.isSafeInteger(saved) && saved >= 0 ? saved : 0;
+    } catch { return 0; }
+  });
+  const cycleWindowScene = () => {
+    setSceneIndex((i) => {
+      const next = (i + 1) % activeWindowScenes.length;
+      try { localStorage.setItem('cupid-window-scene', String(next)); } catch {}
+      return next;
+    });
+  };
 
   // ── Visualizer state ─────────────────────────────────────
   const [visualizerEnabled, setVisualizerEnabled] = useState(() => {
@@ -957,15 +997,27 @@ const handleCatClick = (e) => {
     <div className="player-viewport">
       <div className={`player ${theme === 'blue' ? 'theme-blue' : ''} ${isMobile ? 'mobile-layout' : ''}`}>
         
+        {/* Static window scene behind the pane cutouts (pink, native only) */}
+        {theme === 'pink' && (isMobile || isTablet) && (
+          <img
+            src={activeWindowScenes[sceneIndex % activeWindowScenes.length]}
+            className={`window-scene ${isMobile ? 'window-scene-phone' : 'window-scene-tablet'}`}
+            alt=""
+            draggable={false}
+            onClick={cycleWindowScene}
+            title="tap to change the view"
+          />
+        )}
+
         {/* Base frame */}
-        <img 
-          src={theme === 'pink' 
-            ? (isMobile ? pinkMobileFrames[frameIndex] : pinkDesktopFrames[frameIndex])
+        <img
+          src={theme === 'pink'
+            ? (isMobile ? frameMobileCutout : (isTablet ? frameTabletCutout : pinkDesktopFrames[frameIndex]))
             : (isMobile ? assets.frameMobile : assets.frame)
-          } 
-          className="layer mobile-frame" 
-          alt="" 
-          draggable={false} 
+          }
+          className="layer mobile-frame"
+          alt=""
+          draggable={false}
         />
 
         {/* Ambient Lighting Overlay (Tints the room & turntable based on the window) */}

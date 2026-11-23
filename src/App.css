@@ -1124,3 +1124,29 @@
   transform: translateX(-50%) rotate(6deg); 
   z-index: 4;
 }
+/* ── Static window scene (behind the pane cutouts) ─────────────────
+   The scene image sits below the base frame img (DOM order, same stacking
+   level), clipped to the window region. Rects are the art-px window region
+   mapped through the same stretch the frame image gets:
+   phone: x*526/434-110, y*692/575-23; tablet: x*526/512-110, y*526/512-23. */
+.window-scene {
+  position: absolute;
+  z-index: 0;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.player.mobile-layout .window-scene-phone {
+  left: calc(159.07 * var(--u));
+  top: calc(58.84 * var(--u));
+  width: calc(129.69 * var(--u));
+  height: calc(178.11 * var(--u));
+}
+
+.window-scene-tablet {
+  left: calc(155.04 * var(--u));
+  top: calc(59.19 * var(--u));
+  width: calc(118.16 * var(--u));
+  height: calc(86.30 * var(--u));
+}
