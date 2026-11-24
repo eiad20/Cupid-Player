@@ -44,27 +44,39 @@ const pinkMobileFrames = [frameMobile1];
 // on top, swappable scene layer behind (clipped to the window region).
 import frameMobileCutout from '../assets/pink/frame_mobile_cutout.png';
 import frameTabletCutout from '../assets/pink/frame_tablet_cutout.png';
-import sceneGardenPhone from '../assets/pink/scenes/garden_phone.png';
-import sceneCoastPhone from '../assets/pink/scenes/coast_phone.png';
-import sceneMountainsPhone from '../assets/pink/scenes/mountains_phone.png';
-import sceneGardenTablet from '../assets/pink/scenes/garden_tablet.png';
-import sceneCoastTablet from '../assets/pink/scenes/coast_tablet.png';
-import sceneMountainsTablet from '../assets/pink/scenes/mountains_tablet.png';
-import sceneCitySunsetCatPhone from '../assets/pink/scenes/city_sunset_cat_phone.png';
-import sceneCitySunsetCatTablet from '../assets/pink/scenes/city_sunset_cat_tablet.png';
-import sceneLakeCrescentDuskPhone from '../assets/pink/scenes/lake_crescent_dusk_phone.png';
-import sceneLakeCrescentDuskTablet from '../assets/pink/scenes/lake_crescent_dusk_tablet.png';
-import sceneMoonlitSeaPhone from '../assets/pink/scenes/moonlit_sea_phone.gif';
-import sceneMoonlitSeaTablet from '../assets/pink/scenes/moonlit_sea_tablet.gif';
-import sceneCrescentBeachPhone from '../assets/pink/scenes/crescent_beach_phone.png';
-import sceneCrescentBeachTablet from '../assets/pink/scenes/crescent_beach_tablet.png';
-import sceneCampfireForestPhone from '../assets/pink/scenes/campfire_forest_phone.gif';
-import sceneCampfireForestTablet from '../assets/pink/scenes/campfire_forest_tablet.gif';
+import frameMobileCutoutBlue from '../assets/blue/frame_mobile_cutout.png';
+import frameTabletCutoutBlue from '../assets/blue/frame_tablet_cutout.png';
+import sceneGardenPhone from '../assets/scenes/garden_phone.png';
+import sceneCoastPhone from '../assets/scenes/coast_phone.png';
+import sceneMountainsPhone from '../assets/scenes/mountains_phone.png';
+import sceneGardenTablet from '../assets/scenes/garden_tablet.png';
+import sceneCoastTablet from '../assets/scenes/coast_tablet.png';
+import sceneMountainsTablet from '../assets/scenes/mountains_tablet.png';
+import sceneCitySunsetCatPhone from '../assets/scenes/city_sunset_cat_phone.png';
+import sceneCitySunsetCatTablet from '../assets/scenes/city_sunset_cat_tablet.png';
+import sceneLakeCrescentDuskPhone from '../assets/scenes/lake_crescent_dusk_phone.png';
+import sceneLakeCrescentDuskTablet from '../assets/scenes/lake_crescent_dusk_tablet.png';
+import sceneMoonlitSeaPhone from '../assets/scenes/moonlit_sea_phone.gif';
+import sceneMoonlitSeaTablet from '../assets/scenes/moonlit_sea_tablet.gif';
+import sceneCrescentBeachPhone from '../assets/scenes/crescent_beach_phone.png';
+import sceneCrescentBeachTablet from '../assets/scenes/crescent_beach_tablet.png';
+import sceneCampfireForestPhone from '../assets/scenes/campfire_forest_phone.gif';
+import sceneCampfireForestTablet from '../assets/scenes/campfire_forest_tablet.gif';
+import sceneMoonBranchesPhone from '../assets/scenes/moon_branches_phone.png';
+import sceneMoonBranchesTablet from '../assets/scenes/moon_branches_tablet.png';
+import sceneCityMoonTallPhone from '../assets/scenes/city_moon_tall_phone.png';
+import sceneCityMoonTallTablet from '../assets/scenes/city_moon_tall_tablet.png';
+import sceneLighthouseDuskPhone from '../assets/scenes/lighthouse_dusk_phone.png';
+import sceneLighthouseDuskTablet from '../assets/scenes/lighthouse_dusk_tablet.png';
 const pinkWindowScenes = {
   phone: [sceneGardenPhone, sceneCoastPhone, sceneMountainsPhone,
     sceneCitySunsetCatPhone, sceneLakeCrescentDuskPhone, sceneMoonlitSeaPhone, sceneCrescentBeachPhone, sceneCampfireForestPhone],
   tablet: [sceneGardenTablet, sceneCoastTablet, sceneMountainsTablet,
     sceneCitySunsetCatTablet, sceneLakeCrescentDuskTablet, sceneMoonlitSeaTablet, sceneCrescentBeachTablet, sceneCampfireForestTablet],
+};
+const blueWindowScenes = {
+  phone: [sceneMoonlitSeaPhone, sceneMoonBranchesPhone, sceneCoastPhone, sceneCityMoonTallPhone, sceneLighthouseDuskPhone, sceneCampfireForestPhone],
+  tablet: [sceneMoonlitSeaTablet, sceneCoastTablet, sceneMoonBranchesTablet, sceneCityMoonTallTablet, sceneLighthouseDuskTablet, sceneCampfireForestTablet],
 };
 
 // Singleton cache so we only ever call createMediaElementSource once per <audio> element
@@ -464,9 +476,6 @@ const [frameIndex] = useState(() => Math.floor(Math.random() * pinkDesktopFrames
 
   // ── Window scene (pink theme, native phone/tablet) ──────
   // Tap the window to cycle through the active device scene list.
-  const activeWindowScenes = isMobile
-    ? pinkWindowScenes.phone
-    : pinkWindowScenes.tablet;
   const [sceneIndex, setSceneIndex] = useState(() => {
     try {
       const saved = Number(localStorage.getItem('cupid-window-scene') || '0');
@@ -838,6 +847,11 @@ const handleCatClick = (e) => {
   }, []);
 
   const { theme, toggleTheme, assets } = useTheme();
+  // Window scenes: each theme has its own list (pink: original 8, blue: 5 new).
+  const themeWindowScenes = theme === 'blue' ? blueWindowScenes : pinkWindowScenes;
+  const activeWindowScenes = isMobile
+    ? themeWindowScenes.phone
+    : themeWindowScenes.tablet;
 
   const [recordFrame, setRecordFrame] = useState(0);
   const [needleFrame, setNeedleFrame] = useState(0);
@@ -999,11 +1013,11 @@ const handleCatClick = (e) => {
     <div className="player-viewport">
       <div className={`player ${theme === 'blue' ? 'theme-blue' : ''} ${isMobile ? 'mobile-layout' : ''}`}>
         
-        {/* Static window scene behind the pane cutouts (pink, native only) */}
-        {theme === 'pink' && (isMobile || isTablet) && (
+        {/* Static window scene behind the pane cutouts (pink and blue, native only) */}
+        {(theme === 'pink' || theme === 'blue') && (isMobile || isTablet) && (
           <img
             src={activeWindowScenes[sceneIndex % activeWindowScenes.length]}
-            className={`window-scene ${isMobile ? 'window-scene-phone' : 'window-scene-tablet'}`}
+            className={`window-scene ${isMobile ? 'window-scene-phone' : 'window-scene-tablet'} ${theme === 'blue' ? 'window-scene-blue' : ''}`}
             alt=""
             draggable={false}
             onClick={cycleWindowScene}
@@ -1015,7 +1029,9 @@ const handleCatClick = (e) => {
         <img
           src={theme === 'pink'
             ? (isMobile ? frameMobileCutout : (isTablet ? frameTabletCutout : pinkDesktopFrames[frameIndex]))
-            : (isMobile ? assets.frameMobile : assets.frame)
+            : (isMobile
+                ? frameMobileCutoutBlue
+                : (isTablet ? frameTabletCutoutBlue : assets.frame))
           }
           className="layer mobile-frame"
           alt=""

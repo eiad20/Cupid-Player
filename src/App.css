@@ -1150,3 +1150,26 @@
   width: calc(118.16 * var(--u));
   height: calc(86.30 * var(--u));
 }
+
+/* Blue theme: scene box slightly larger than the pane holes in the blue
+   cutout frames; the extra edge hides behind the opaque frame. */
+.player.mobile-layout .window-scene-phone.window-scene-blue {
+  left: calc(155 * var(--u));
+  top: calc(57 * var(--u));
+  width: calc(135 * var(--u));
+  height: calc(189 * var(--u));
+  object-fit: cover;
+}
+
+.window-scene-tablet.window-scene-blue {
+  left: calc(153 * var(--u));
+  top: calc(57 * var(--u));
+  width: calc(122 * var(--u));
+  height: calc(92 * var(--u));
+  object-fit: cover;
+}
+
+/* Blue theme: keep the plant behind the record player (player is z-index 10) */
+.theme-blue .plant-image {
+  z-index: 5;
+}
