@@ -5,6 +5,7 @@ import useServerStatus from './services/useServerStatus';
 import './App.css';
 import useAudioPlayer from './useAudioPlayer';
 import { saveLastTrack, loadLastTrack } from './lastTrack';
+import { normalizePlaylistUrl, readSavedPlaylists, writeSavedPlaylists } from './savedPlaylists';
 
 import useTheme from './useTheme';
 import {
@@ -79,117 +80,117 @@ const blueWindowScenes = {
   tablet: [sceneMoonlitSeaTablet, sceneCoastTablet, sceneMoonBranchesTablet, sceneCityMoonTallTablet, sceneLighthouseDuskTablet, sceneCampfireForestTablet],
 };
 
-// Singleton cache so we only ever call createMediaElementSource once per <audio> element
-const audioGraphMap = new WeakMap();
+function SavedPlaylistButton({ playlist, disabled, onPlay, onRemove }) {
+  const gesture = useRef({ timer: null, suppress: false, x: 0, y: 0 });
+  const cancelTimer = () => { clearTimeout(gesture.current.timer); gesture.current.timer = null; };
+  useEffect(() => () => clearTimeout(gesture.current.timer), []);
+  return <button type="button" className="settings-theme-btn saved-playlist-tile"
+    disabled={disabled} title={`${playlist.name} (hold to remove)`}
+    aria-label={`${playlist.name}. Tap to play; hold or press Delete to remove.`}
+    onPointerDown={(e) => {
+      if (!e.isPrimary || e.button !== 0) return;
+      cancelTimer();
+      gesture.current = { timer: null, suppress: false, x: e.clientX, y: e.clientY };
+      gesture.current.timer = setTimeout(() => {
+        gesture.current.suppress = true;
+        gesture.current.timer = null;
+        onRemove();
+      }, 650);
+    }}
+    onPointerMove={(e) => {
+      if (Math.hypot(e.clientX - gesture.current.x, e.clientY - gesture.current.y) > 10) {
+        cancelTimer(); gesture.current.suppress = true;
+      }
+    }}
+    onPointerUp={cancelTimer}
+    onPointerLeave={() => { if (gesture.current.timer) { cancelTimer(); gesture.current.suppress = true; } }}
+    onPointerCancel={() => { cancelTimer(); gesture.current.suppress = true; }}
+    onContextMenu={(e) => e.preventDefault()}
+    onKeyDown={(e) => {
+      if (e.key === 'Delete') { e.preventDefault(); cancelTimer(); onRemove(); }
+    }}
+    onClick={(e) => {
+      if (gesture.current.suppress && e.detail !== 0) { e.preventDefault(); return; }
+      onPlay();
+    }}><span dir="auto">{playlist.name}</span></button>;
+}
 
-function WindowVisualizer({ audioRef, isPlaying, theme, enabled, isMobile }) {
-  const canvasRef = useRef(null);
-
+function RemovePlaylistDialog({ playlist, error, onClose, onConfirm }) {
+  const ref = useRef(null);
   useEffect(() => {
-    if (!enabled) return undefined;
-    const canvas = canvasRef.current;
-    const audio = audioRef?.current;
-    if (!canvas || !audio) return undefined;
-
-    let graph = audioGraphMap.get(audio);
-    if (!graph && isPlaying) {
-      try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        const ctx = new AudioCtx();
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 64;
-        analyser.smoothingTimeConstant = 0.78;
-        const source = ctx.createMediaElementSource(audio);
-        source.connect(analyser);
-        analyser.connect(ctx.destination);
-        graph = { ctx, analyser };
-        audioGraphMap.set(audio, graph);
-      } catch {
-        // Fallback if browser/OS restricts Web Audio graph creation
-      }
-    }
-
-    if (graph && graph.ctx.state === 'suspended' && isPlaying) {
-      graph.ctx.resume().catch(() => {});
-    }
-
-    const ctx2d = canvas.getContext('2d');
-    const BARS = 16;
-    const MAX_BLOCKS = 8;
-    const dataArray = new Uint8Array(graph ? graph.analyser.frequencyBinCount : 32);
-    const smoothHeights = new Float32Array(BARS);
-    let rafId;
-
-    const render = (now) => {
-      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
-
-      let hasSignal = false;
-      if (graph && isPlaying) {
-        graph.analyser.getByteFrequencyData(dataArray);
-        for (let i = 0; i < BARS; i += 1) {
-          if (dataArray[i] > 2) {
-            hasSignal = true;
-            break;
-          }
+    const previous = document.activeElement;
+    ref.current?.querySelector('button')?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, []);
+  return <div className="saved-playlist-backdrop">
+    <div ref={ref} className="saved-playlist-dialog" role="dialog" aria-modal="true"
+      aria-labelledby="remove-playlist-heading" onKeyDown={(e) => {
+        if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+        if (e.key === 'Tab') {
+          const buttons = ref.current.querySelectorAll('button');
+          if (e.shiftKey && document.activeElement === buttons[0]) { e.preventDefault(); buttons[1].focus(); }
+          else if (!e.shiftKey && document.activeElement === buttons[1]) { e.preventDefault(); buttons[0].focus(); }
         }
-      }
+      }}>
+      <h2 id="remove-playlist-heading">remove saved playlist?</h2>
+      <p className="saved-playlist-remove-name" dir="auto">{playlist.name}</p>
+      <p className="saved-playlist-hint">only removes this saved shortcut. youtube and current playback stay unchanged.</p>
+      {error && <div className="settings-error" role="alert">{error}</div>}
+      <div className="settings-theme-row">
+        <button type="button" className="settings-theme-btn" onClick={onClose}>cancel</button>
+        <button type="button" className="settings-theme-btn active" onClick={onConfirm}>remove</button>
+      </div>
+    </div>
+  </div>;
+}
 
-      const topColor = theme === 'blue' ? 'rgba(200, 211, 246, 0.85)' : 'rgba(255, 232, 226, 0.88)';
-      const bodyColor = theme === 'blue' ? 'rgba(130, 195, 220, 0.52)' : 'rgba(246, 207, 200, 0.55)';
-
-      const barStep = 4; // 3px bar + 1px gap
-      const barWidth = 3;
-      const blockHeight = 2;
-      const blockGap = 1;
-      
-      // Centers the 14 bars inside the 64px canvas
-      const startX = (canvas.width - (BARS * barStep)) / 2; 
-
-      for (let i = 0; i < BARS; i += 1) {
-        let targetBlocks = 1;
-        if (isPlaying) {
-          if (hasSignal) {
-            const bin = Math.min(dataArray.length - 1, Math.floor((i / BARS) * 18) + 1);
-            const val = dataArray[bin] / 255;
-            targetBlocks = Math.max(1, Math.min(MAX_BLOCKS, Math.round(val * MAX_BLOCKS)));
-          } else {
-            const wave =
-              Math.sin(now * 0.007 + i * 0.65) * 0.5 +
-              Math.cos(now * 0.011 - i * 0.4) * 0.5;
-            targetBlocks = Math.max(1, Math.min(MAX_BLOCKS - 2, Math.round((wave + 1) * 2.5) + 1));
-          }
-        }
-
-        smoothHeights[i] += (targetBlocks - smoothHeights[i]) * 0.28;
-        const blocks = Math.max(1, Math.round(smoothHeights[i]));
-        const x = i * barStep; // Changed back to start from 0
-
-        for (let b = 0; b < blocks; b += 1) {
-          const y = canvas.height - (b + 1) * (blockHeight + blockGap);
-          ctx2d.fillStyle = b === blocks - 1 && blocks > 1 ? topColor : bodyColor;
-          ctx2d.fillRect(x, y, barWidth, blockHeight);
-        }
-      }
-
-      if (isPlaying) {
-        rafId = requestAnimationFrame(render);
-      }
-    };
-
-    rafId = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(rafId);
-  }, [audioRef, isPlaying, theme, enabled, isMobile]);
-
-  if (!enabled) return null;
-
+function SavedPlaylistDialog({ onClose, onSave }) {
+  const [name, setName] = useState('');
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+  const dialogRef = useRef(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    dialogRef.current?.querySelector('input')?.focus();
+    return () => previous?.focus?.();
+  }, []);
+  const save = () => {
+    if (!name.trim()) { setError('Give your playlist a name'); return; }
+    const normalized = normalizePlaylistUrl(url);
+    if (!normalized) { setError('Paste a valid YouTube playlist link'); return; }
+    try { onSave(name.trim(), normalized); }
+    catch { setError('Could not save on this device. Free some space and try again.'); }
+  };
   return (
-    <canvas
-      ref={canvasRef}
-      width={64}
-      height={24}
-      className="window-visualizer"
-      aria-hidden="true"
-    />
+    <div className="saved-playlist-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="saved-playlist-dialog" ref={dialogRef} role="dialog" aria-modal="true"
+        aria-labelledby="saved-playlist-heading" onKeyDown={(e) => {
+          if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+          if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); save(); }
+          if (e.key === 'Tab') {
+            const fields = dialogRef.current.querySelectorAll('input, button');
+            const first = fields[0], last = fields[fields.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+          }
+        }}>
+        <h2 id="saved-playlist-heading">save playlist</h2>
+        <label htmlFor="saved-playlist-name">playlist name</label>
+        <input id="saved-playlist-name" className="settings-input" value={name} maxLength={60}
+          dir="auto" autoComplete="off" onChange={(e) => { setName(e.target.value); setError(''); }} />
+        <label htmlFor="saved-playlist-url">youtube playlist link</label>
+        <input id="saved-playlist-url" className="settings-input" type="url" value={url}
+          placeholder="https://www.youtube.com/playlist?list=..." autoCapitalize="none" autoCorrect="off"
+          spellCheck={false} autoComplete="off" dir="ltr"
+          onChange={(e) => { setUrl(e.target.value); setError(''); }} />
+        <p className="saved-playlist-hint">saved on this device. internet needed to play.</p>
+        {error && <div className="settings-error" role="alert">{error}</div>}
+        <div className="settings-theme-row">
+          <button type="button" className="settings-theme-btn" onClick={onClose}>cancel</button>
+          <button type="button" className="settings-theme-btn active" onClick={save}>save</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -490,29 +491,17 @@ const [frameIndex] = useState(() => Math.floor(Math.random() * pinkDesktopFrames
     });
   };
 
-  // ── Visualizer state ─────────────────────────────────────
-  const [visualizerEnabled, setVisualizerEnabled] = useState(() => {
-    try {
-      return localStorage.getItem('cupid-visualizer') !== 'off';
-    } catch {
-      return true;
-    }
-  });
-
-  const toggleVisualizer = useCallback((enable) => {
-    setVisualizerEnabled(enable);
-    try {
-      localStorage.setItem('cupid-visualizer', enable ? 'on' : 'off');
-    } catch {
-      // ignore
-    }
-  }, []);
-
   // ── Source state ─────────────────────────────────────────
   const [source, setSource] = useState('local'); // 'local' | 'streaming'
   const [youtubeConnected, setYoutubeConnected] = useState(isYouTubeLoggedIn());
   const [youtubeLoggingIn, setYoutubeLoggingIn] = useState(false);
   const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
+  const [savedPlaylists, setSavedPlaylists] = useState(readSavedPlaylists);
+  const [showSavePlaylist, setShowSavePlaylist] = useState(false);
+  const [playlistToDelete, setPlaylistToDelete] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [playlistToPlay, setPlaylistToPlay] = useState(null);
+  const playlistLoadingRef = useRef(false);
   const [streamTracks, setStreamTracks] = useState([]);
   const [youtubePlaylists, setYoutubePlaylists] = useState([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
@@ -726,7 +715,7 @@ const handleCatClick = (e) => {
       let more = null;
       if (link && link.type === 'playlist') {
         rawTracks = await fetchYouTubePlaylist(link.url);
-        if (rawTracks.length === 0) {
+        if (!Array.isArray(rawTracks) || rawTracks.length === 0) {
           setSearchError('playlist is empty or private');
           return;
         }
@@ -788,18 +777,52 @@ const handleCatClick = (e) => {
       .finally(() => setLoadingPlaylists(false));
   }, []);
 
+  // Saving is local and does not need the server. Selecting a saved tile fetches
+  // the current playlist contents, then starts its first track after React commits.
+  useEffect(() => {
+    if (playlistToPlay && activeTracks === playlistToPlay) {
+      restoredRef.current = null;
+      jumpTo(0);
+      setPlaylistToPlay(null);
+    }
+  }, [playlistToPlay, activeTracks, jumpTo]);
+
+  const savePlaylist = (name, url) => {
+    const next = [...savedPlaylists, {
+      id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name, url,
+    }];
+    writeSavedPlaylists(next);
+    setSavedPlaylists(next);
+    setShowSavePlaylist(false);
+  };
+
+  const deleteSavedPlaylist = () => {
+    if (!playlistToDelete) return;
+    const next = savedPlaylists.filter((p) => p.id !== playlistToDelete.id);
+    try {
+      writeSavedPlaylists(next);
+      setSavedPlaylists(next);
+      setPlaylistToDelete(null);
+      setDeleteError('');
+    } catch { setDeleteError('Could not remove on this device. Try again.'); }
+    // Removing a shortcut never changes the current queue or playback.
+  };
+
   // ── Load a playlist from a YouTube URL ─────────────────
-  const loadYoutubePlaylistFromUrl = useCallback(async (rawInput) => {
+  const loadYoutubePlaylistFromUrl = useCallback(async (rawInput, startPlayback = false) => {
+    if (playlistLoadingRef.current) return;
     setSettingsError(null);
     const parsed = parseYouTubePlaylistUrl(rawInput);
     if (!parsed) {
       setSettingsError('Not a recognised YouTube playlist URL');
       return;
     }
+    playlistLoadingRef.current = true;
     setLoadingPlaylist(true);
     try {
       const rawTracks = await fetchYouTubePlaylist(rawInput);
-      if (rawTracks.length === 0) {
+      if (!Array.isArray(rawTracks) || rawTracks.length === 0) {
         setSettingsError('Playlist is empty or private');
         return;
       }
@@ -813,9 +836,16 @@ const handleCatClick = (e) => {
       setSource('streaming');
       setYoutubeUrlInput('');
       setSearchMore(null);
+      if (startPlayback) {
+        setMusicService('youtube');
+        try { localStorage.setItem('cupid-player-music-service', 'youtube'); } catch { /* ignore */ }
+        setPlaylistToPlay(tracks);
+        setShowSettings(false);
+      }
     } catch (err) {
-      setSettingsError(err.message);
+      setSettingsError(err.message || 'Could not load playlist. Try again.');
     } finally {
+      playlistLoadingRef.current = false;
       setLoadingPlaylist(false);
     }
   }, []);
@@ -1042,15 +1072,6 @@ const handleCatClick = (e) => {
         {theme === 'pink' && (
           <div className={`layer lighting-overlay light-effect-${frameIndex + 1}`} />
         )}
-
-        {/* Window Pane Pixel Equalizer */}
-        <WindowVisualizer
-          audioRef={audioRef}
-          isPlaying={isPlaying}
-          theme={theme}
-          enabled={visualizerEnabled}
-          isMobile={isMobile}
-        />
 
        {/* Window title (hidden on native mobile/tablet devices) */}
        {!isNative && <div className="window-title">cupid player</div>}
@@ -1514,6 +1535,15 @@ const handleCatClick = (e) => {
           </div>
         )}
 
+        {showSavePlaylist && (
+          <SavedPlaylistDialog onClose={() => setShowSavePlaylist(false)} onSave={savePlaylist} />
+        )}
+
+        {playlistToDelete && (
+          <RemovePlaylistDialog playlist={playlistToDelete} error={deleteError}
+            onClose={() => { setPlaylistToDelete(null); setDeleteError(''); }} onConfirm={deleteSavedPlaylist} />
+        )}
+
         {/* Settings Panel */}
         {showSettings && (
           <div className="settings-panel">
@@ -1534,21 +1564,20 @@ const handleCatClick = (e) => {
                 </button>
               </div>
 
-              <div className="settings-label">visualizer</div>
-              <div className="settings-theme-row">
-                <button
-                  className={`settings-theme-btn ${visualizerEnabled ? 'active' : ''}`}
-                  onClick={() => toggleVisualizer(true)}
-                >
-                  on
-                </button>
-                <button
-                  className={`settings-theme-btn ${!visualizerEnabled ? 'active' : ''}`}
-                  onClick={() => toggleVisualizer(false)}
-                >
-                  off
+              <div className="settings-label">saved playlists</div>
+              <div className="saved-playlist-grid" aria-label="saved playlists">
+                {savedPlaylists.map((playlist) => (
+                  <SavedPlaylistButton key={playlist.id} playlist={playlist} disabled={loadingPlaylist}
+                    onPlay={() => loadYoutubePlaylistFromUrl(playlist.url, true)}
+                    onRemove={() => { setDeleteError(''); setPlaylistToDelete(playlist); }} />
+                ))}
+                <button type="button" className="settings-theme-btn saved-playlist-tile saved-playlist-add"
+                  aria-label="add saved playlist" disabled={loadingPlaylist}
+                  onClick={() => setShowSavePlaylist(true)}>
+                  <span aria-hidden="true">+</span>
                 </button>
               </div>
+              {loadingPlaylist && <div className="settings-label" role="status">loading playlist...</div>}
 
               <div className="settings-label">music</div>
               <SettingsDropdown

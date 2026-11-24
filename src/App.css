@@ -1095,35 +1095,6 @@
   opacity: 0.5;
 }
 
-.window-visualizer {
-  position: absolute;
-  /* 1. MOVE LEFT/RIGHT: Increase to move right (e.g., 52%, 55%) */
-  left: 70%; 
-  /* 2. MOVE UP/DOWN: Adjust the number 114 */
-  top: calc(110 * var(--u));
-  width: calc(120 * var(--u));
-  height: calc(34 * var(--u));
-  /* 3. ROTATE: Change -3deg to tilt it. Positive = clockwise, Negative = counter-clockwise */
-  transform: translateX(-50%) rotate(4deg);
-  
-  image-rendering: pixelated;
-  pointer-events: none;
-  user-select: none;
-  z-index: 4;
-}
-
-/* 4. MOBILE OVERRIDE */
-.player.mobile-layout .window-visualizer {
-  left: 73%; 
-  /* Increased from 160 to push it down. Adjust to 195 or 200 if still too high */
-  top: calc(195 * var(--u)); 
-  
-  /* Shrunk the width box since we only have 12 bars now */
-  width: calc(125 * var(--u)); 
-  height: calc(38 * var(--u));
-  transform: translateX(-50%) rotate(6deg); 
-  z-index: 4;
-}
 /* ── Static window scene (behind the pane cutouts) ─────────────────
    The scene image sits below the base frame img (DOM order, same stacking
    level), clipped to the window region. Rects are the art-px window region
@@ -1173,3 +1144,64 @@
 .theme-blue .plant-image {
   z-index: 5;
 }
+
+/* Saved playlist tiles use the space previously used by the visualizer controls. */
+.saved-playlist-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(4 * var(--u));
+  max-height: calc(70 * var(--u));
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.saved-playlist-tile {
+  flex-shrink: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+.saved-playlist-tile:hover:not(:disabled), .saved-playlist-tile:focus-visible {
+  background: var(--color-panel-text);
+  color: var(--color-primary);
+}
+.saved-playlist-tile:disabled { opacity: .5; cursor: wait; }
+.saved-playlist-add {
+  min-width: calc(23 * var(--u));
+  text-align: center;
+}
+.saved-playlist-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, .5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  -webkit-app-region: no-drag;
+}
+.saved-playlist-dialog {
+  width: 100%;
+  max-width: 360px;
+  max-height: 90%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--color-primary);
+  border: 2px solid var(--color-secondary);
+  border-radius: 4px;
+  color: var(--color-panel-text);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .4);
+}
+.saved-playlist-dialog h2 { font-size: 23px; font-weight: normal; margin: 0 0 4px; }
+.saved-playlist-dialog label { font-size: 17px; }
+.saved-playlist-dialog .settings-input { font-size: 16px; min-height: 44px; width: 100%; padding: 8px; }
+.saved-playlist-dialog .settings-theme-btn { font-size: 17px; min-height: 44px; flex: 1; }
+.saved-playlist-hint { font-size: 14px; margin: 0; line-height: 1.3; }
+.saved-playlist-dialog .settings-error { font-size: 16px; white-space: normal; }
+
+.saved-playlist-remove-name { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+
+.saved-playlist-tile { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: pan-y; }
